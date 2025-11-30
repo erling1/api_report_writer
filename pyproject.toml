@@ -1,0 +1,14 @@
+[project]
+name = "johannes"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.122.1",
+    "jwt>=1.4.0",
+    "pyjwt>=2.10.1",
+    "python-jose>=3.5.0",
+    "python-multipart>=0.0.20",
+    "uvicorn>=0.38.0",
+]
