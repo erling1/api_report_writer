@@ -2,13 +2,18 @@
 from fastapi import Depends, FastAPI, HTTPException, status,Cookie, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import FastAPI
-
+from fastapi.responses import RedirectResponse,HTMLResponse,FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from typing import Union
 import asyncio 
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 import logging
+
+#Encryption
+from cryptography.fernet import Fernet
 
 #pydantic
 from pydantic import BaseModel
@@ -17,10 +22,65 @@ from pydantic import BaseModel
 import jwt
 from jwt.exceptions import InvalidTokenError
 
-SECRET_KEY = "your-very-secret-key-replace-me" 
+#Okta Oauth 
+from authlib.integrations.starlette_client import OAuth
+
+
+#Starlette 
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.config import Config
+
+#general 
+import os
+import requests
+
+
+
+
+
+
+SECRET_KEY_JWT = "jwt_key" 
+MASTER_KEY = "master_key"
 ALGORITHM = "HS256"
 
+#Okta credentials
+AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
+AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
+AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
+JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+ISSUER = f"{AUTH0_DOMAIN}/oauth2/default" 
+AUDIENCE = os.getenv("AUTH0_AUDIENCE") 
+
+
+#FastAPI credentials
+API_SECRET_KEY = os.getenv("API_SECRET_KEY")
+
+jwks = requests.get(JWKS_URL).json()
+
+
+
 app = FastAPI()
+
+templates = Jinja2Templates(directory="static")
+
+app.mount("/static", StaticFiles(directory="static", html=True), name="static")
+
+app.add_middleware(SessionMiddleware, secret_key=API_SECRET_KEY)
+
+#Set up config for Okta OAuth, credentials are fetched automaticaly from env 
+config = Config()
+oauth = OAuth(config)
+
+oauth.register(
+    name='okta',
+    client_id=AUTH0_CLIENT_ID,
+    client_secret=AUTH0_CLIENT_SECRET,
+    server_metadata_url=f"https://{AUTH0_DOMAIN}/oauth2/default/.well-known/openid-configuration",
+    client_kwargs={
+        'scope': 'openid profile email'
+    }
+)
+
 
 logging.basicConfig(
     level=logging.INFO, 
@@ -44,14 +104,55 @@ class UserInDB(User):
 
 
 fake_db = {
-    'johannes': {
-        'username' : 'johannes',
+    'erling': {
+        'username' : 'erling',
         'email' : 'johannes@gmail',
         'hashed_password' : 'hashed' + 'test'
 
     },
     
 }
+
+
+
+
+#I want one more way to access my api, mostly to practice setting up endpoints using various secure methods
+
+def generate_master_key_remote_api_call():
+
+    master_key = Fernet.generate_key()
+
+    from dotenv import set_key
+    set_key(".env", "master_key", master_key)
+
+
+def generate_token_remote_api_call(username:str, expire_delta: int):
+
+    master_key = os.getenv('master_key')
+
+    print(master_key)
+
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expire_delta)
+
+    payload = {
+        'user': username,
+        'expire': expire.timestamp()
+    }
+    
+
+    payload_bytes = json.dumps(payload).encode('utf-8')
+
+    print(payload_bytes)
+
+    encrypted_token = Fernet(master_key).encrypt(payload_bytes)
+
+    print(f"jwe token : {encrypted_token}")
+
+    return encrypted_token
+
+
+
+
 
 async def get_token_from_cookie(request: Request) -> str:
     """Retrieves the access token from the cookie."""
@@ -63,7 +164,6 @@ async def get_token_from_cookie(request: Request) -> str:
             headers={"WWW-Authenticate": "Bearer"},
         )
     return access_token
-
 
 async def fake_hash_password(password: str) -> str: 
     return 'hashed' + password
@@ -79,13 +179,13 @@ async def create_access_token(data: dict, expires_delta: timedelta | None = None
 
     to_encode.update({"exp": expire})
 
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY_JWT, algorithm=ALGORITHM)
 
     logger.info(f"Successfully created JWT for user: {data.get('sub')}")
 
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(get_token_from_cookie)) -> User:
+async def get_current_user_and_validate_token(token: str = Depends(get_token_from_cookie)) -> User:
     """Decodes and validates the JWT, returning the user object."""
 
     credentials_exception = HTTPException(
@@ -95,7 +195,7 @@ async def get_current_user(token: str = Depends(get_token_from_cookie)) -> User:
     )
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY_JWT, algorithms=[ALGORITHM])
         
         username: str = payload.get("sub")
 
@@ -108,39 +208,124 @@ async def get_current_user(token: str = Depends(get_token_from_cookie)) -> User:
              
         user = User(**user_dict) 
 
+        logger.info(f"User: {user.username}")
+
     except JWTError:
         raise credentials_exception
         
     return user
 
-async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+async def get_current_active_user(current_user: User = Depends(get_current_user_and_validate_token)) -> User:
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
 
+async def get_user_and_validate_session(request: Request):
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = request.session.get("access_token")
+
+    headers = jwt.get_unverifed_header(token)
+    kid = headers.get("kid")
+    
+    for key in jwks["keys"]:
+        if key["kid"] == kid:
+            signing_key = kid 
+
+        else: 
+            raise Exception("Signing Key not found")
+
+    try: 
+
+        payload = jwt.decode(
+            token,
+            key,
+            algorithms=["RS256"],
+            audience=AUTH0_AUDIENCE,
+            issuer=ISSUER
+    )
+
+        return User(username = user,)
+
+    except JWTError:
+        logger.info(f"JWT decoding error")
+        return None 
 
 
 
 
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    # Get user from session (assuming you have SessionMiddleware set up)
+    user = request.session.get("user")
+    
+    # Format the JSON for the <pre> tag
+    pretty_user = json.dumps(user, indent=4) if user else None
+    
+    # This "renders" the home.html and replaces {{ session }} with real data
+    return templates.TemplateResponse(
+        "home.html", 
+        {
+            "request": request, 
+            "session": user, 
+            "pretty": pretty_user
+        }
+    )
 
-@app.get("/")
-async def read_root():
-    return {"Hello": "World"}
+
+@app.get("/login")
+async def login(request: Request):
+    redirect_uri = request.url_for("callback")
+    return await oauth.okta.authorize_redirect(request, redirect_uri)
+
+@app.get("/callback")
+async def callback(request: Request):
+    token = await oauth.okta.authorize_access_token(request)
+    request.session["access_token"] = token
+    return RedirectResponse(url="/")
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/")
+
+@app.get("/test")
+async def test_api(user: User = Depends(get_user_and_validate_session)):
+    
+    logger.info(f"Checking User: {user.username}")
+
+    return User
+
+
+
+
 
 
 
 @app.post("/token")
 async def login(response: Response,form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
 
+    logger.info(f"Checking response in /token endpoint: {response.body}, also checking form_data: {form_data.password} {form_data.username} ")
+
     user_dict = fake_db.get(form_data.username)
+
+    logger.info(f"user_dict :{user_dict}")
 
     if not user_dict:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
     user = UserInDB(**user_dict)
-    hashed_password = fake_hash_password(form_data.password)
-
+    logger.info(f"User (UserInDB): {user}")
+    hashed_password = await fake_hash_password(form_data.password)
+    logger.info(f"hashed_password: {hashed_password}")
     if not hashed_password == user.hashed_password:
         raise HTTPException(status_code=400, detail="Incorrect password")
 
@@ -165,7 +350,7 @@ async def login(response: Response,form_data: Annotated[OAuth2PasswordRequestFor
 
 
 @app.get("/users/me")
-async def read_users_me(current_user: User = Depends(get_current_user)):
+async def read_users_me(current_user: User = Depends(get_current_user_and_validate_token)):
     return current_user
 
 

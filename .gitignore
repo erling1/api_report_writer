@@ -1,2 +1,6 @@
 .python-version
 __pycache__/
+
+
+.env 
+export_env.zsh 
