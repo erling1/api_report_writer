@@ -33,7 +33,8 @@ from starlette.config import Config
 #general 
 import os
 import requests
-
+import json 
+import base64
 
 
 
@@ -48,8 +49,8 @@ AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
 JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
-ISSUER = f"{AUTH0_DOMAIN}/oauth2/default" 
-AUDIENCE = os.getenv("AUTH0_AUDIENCE") 
+ISSUER = f"https://{AUTH0_DOMAIN}/" 
+AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE") 
 
 
 #FastAPI credentials
@@ -72,10 +73,10 @@ config = Config()
 oauth = OAuth(config)
 
 oauth.register(
-    name='okta',
+    name='auth0',  
     client_id=AUTH0_CLIENT_ID,
     client_secret=AUTH0_CLIENT_SECRET,
-    server_metadata_url=f"https://{AUTH0_DOMAIN}/oauth2/default/.well-known/openid-configuration",
+    server_metadata_url=f"https://{AUTH0_DOMAIN}/.well-known/openid-configuration",
     client_kwargs={
         'scope': 'openid profile email'
     }
@@ -97,6 +98,8 @@ class User(BaseModel):
     username: str
     email: str | None = None
     full_name: str | None = None
+    avatar: str | None = None  # Added to match your dict
+    user_id: str | None = None  # Added to match your dict
     disabled: bool | None = None
 
 class UserInDB(User):
@@ -222,7 +225,9 @@ async def get_current_active_user(current_user: User = Depends(get_current_user_
 
 
 async def get_user_and_validate_session(request: Request):
+    
     user = request.session.get("user")
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -230,32 +235,59 @@ async def get_user_and_validate_session(request: Request):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = request.session.get("access_token")
+    token = user.get("access_token")
+    
+    logger.info(f"token: {token}")
+    
+    id_token = user.get("id_token")
 
-    headers = jwt.get_unverifed_header(token)
-    kid = headers.get("kid")
+    if id_token:
+
+        headers = jwt.get_unverified_header(id_token)
+        kid = headers.get("kid")
+    else:
+        raise Exception("Could not find kid for verification of access_token")
+
+    logger.info(f"checking kid : {kid}")
     
     for key in jwks["keys"]:
+        kid_in_key = key["kid"]
+        logger.info(f" kid in keys: {kid_in_key}")
         if key["kid"] == kid:
-            signing_key = kid 
+            signing_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key))
+    logger.info(f"checking user content: {user}")
 
-        else: 
-            raise Exception("Signing Key not found")
+    userinfo = user.get("userinfo", {})
+
+    person_data = {
+    "username": userinfo.get("nickname"),
+    "full_name": userinfo.get("name"),
+    "email": userinfo.get("email"),
+    "avatar": userinfo.get("picture"),
+    "user_id": userinfo.get("sub")  # The unique Auth0 ID
+}
+    header = jwt.get_unverified_header(token)
+    algo = header.get("alg")
+    logger.info(f"issuer: {ISSUER}") 
+
+
 
     try: 
 
         payload = jwt.decode(
-            token,
-            key,
+            id_token,
+            signing_key,
             algorithms=["RS256"],
             audience=AUTH0_AUDIENCE,
             issuer=ISSUER
     )
+        
+        current_user = User(**person_data)
 
-        return User(username = user,)
+        return current_user
 
-    except JWTError:
-        logger.info(f"JWT decoding error")
+    except Exception as e:
+        logger.info(f"JWT decoding error, Exception: {e}")
         return None 
 
 
@@ -263,13 +295,10 @@ async def get_user_and_validate_session(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    # Get user from session (assuming you have SessionMiddleware set up)
     user = request.session.get("user")
     
-    # Format the JSON for the <pre> tag
     pretty_user = json.dumps(user, indent=4) if user else None
     
-    # This "renders" the home.html and replaces {{ session }} with real data
     return templates.TemplateResponse(
         "home.html", 
         {
@@ -283,12 +312,12 @@ async def read_root(request: Request):
 @app.get("/login")
 async def login(request: Request):
     redirect_uri = request.url_for("callback")
-    return await oauth.okta.authorize_redirect(request, redirect_uri)
+    return await oauth.auth0.authorize_redirect(request, redirect_uri)
 
 @app.get("/callback")
 async def callback(request: Request):
-    token = await oauth.okta.authorize_access_token(request)
-    request.session["access_token"] = token
+    token = await oauth.auth0.authorize_access_token(request)
+    request.session["user"] = token
     return RedirectResponse(url="/")
 
 
@@ -300,9 +329,9 @@ async def logout(request: Request):
 @app.get("/test")
 async def test_api(user: User = Depends(get_user_and_validate_session)):
     
-    logger.info(f"Checking User: {user.username}")
+    logger.info(f"Checking User: {user}")
 
-    return User
+    return user
 
 
 

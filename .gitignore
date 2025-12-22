@@ -4,3 +4,4 @@ __pycache__/
 
 .env 
 export_env.zsh 
+__marimo__
