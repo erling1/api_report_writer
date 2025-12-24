@@ -97,8 +97,8 @@ class User(BaseModel):
     username: str
     email: str | None = None
     full_name: str | None = None
-    avatar: str | None = None  # Added to match your dict
-    user_id: str | None = None  # Added to match your dict
+    avatar: str | None = None  
+    user_id: str | None = None  
     disabled: bool | None = None
 
 class UserInDB(User):
@@ -144,11 +144,7 @@ def generate_token_remote_api_call(username:str, expire_delta: int):
 
     payload_bytes = json.dumps(payload).encode('utf-8')
 
-    print(payload_bytes)
-
     encrypted_token = Fernet(master_key).encrypt(payload_bytes)
-
-    print(f"jwe token : {encrypted_token}")
 
     return encrypted_token
 
