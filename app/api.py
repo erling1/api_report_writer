@@ -20,7 +20,6 @@ from pydantic import BaseModel
 
 #json web tokens 
 import jwt
-from jwt.exceptions import InvalidTokenError
 
 #Okta Oauth 
 from authlib.integrations.starlette_client import OAuth

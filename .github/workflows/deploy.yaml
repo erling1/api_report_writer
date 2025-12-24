@@ -1,0 +1,31 @@
+name: Build and Deploy to AKS
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Build and Push to ACR
+      run: |
+        az acr login --name fastapijohannes12345acr
+        docker build -t fastapijohannes12345acr.azurecr.io/fastapi:latest ./app
+        docker push fastapijohannes12345acr.azurecr.io/fastapi:latest
+
+    - name: Set AKS Context
+      uses: azure/aks-set-context@v3
+      with:
+        resource-group: 'fastapi_rg'
+        cluster-name: 'fastapi_aks_cluster'
+
+    - name: Deploy to AKS
+      run: |
+        kubectl apply -f deployment.yaml

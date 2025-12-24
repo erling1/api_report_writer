@@ -1,7 +1,21 @@
 .python-version
 __pycache__/
+.DS_Store
+.venv/
+.ruff_cache/   
+*.py[cod]
 
-
-.env 
 export_env.zsh 
 __marimo__
+__pycache__/
+.env
+
+
+#terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+*.tfvars.json
+crash.log
