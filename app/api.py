@@ -44,16 +44,16 @@ MASTER_KEY = "master_key"
 ALGORITHM = "HS256"
 
 #Okta credentials
-AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
-AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
-AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
+AUTH0_DOMAIN = os.getenv("AUTH-DOMAIN")
+AUTH0_CLIENT_ID = os.getenv("AUTH-CLIENT-ID")
+AUTH0_CLIENT_SECRET = os.getenv("AUTH-CLIENT-SECRET")
 JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 ISSUER = f"https://{AUTH0_DOMAIN}/" 
-AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE") 
+AUTH0_AUDIENCE = os.getenv("AUTH-AUDIENCE") 
 
 
 #FastAPI credentials
-API_SECRET_KEY = os.getenv("API_SECRET_KEY")
+API_SECRET_KEY = os.getenv("API-SECRET-KEY")
 
 jwks = requests.get(JWKS_URL).json()
 

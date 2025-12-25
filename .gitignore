@@ -19,3 +19,11 @@ __pycache__/
 *.tfvars
 *.tfvars.json
 crash.log
+
+
+#kubernetes
+secrets.yaml
+secret-store.yaml 
+external-secrets.yaml
+secret-store.yaml 
+external-secret.yaml
