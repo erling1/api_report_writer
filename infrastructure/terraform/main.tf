@@ -105,7 +105,6 @@ provider "helm" {
   }
 }
 
-# Your Helm resource should look like this (No equals signs for 'set')
 resource "helm_release" "external_secrets" {
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
@@ -132,14 +131,12 @@ resource "helm_release" "external_secrets" {
 
 
 
-# 1. The Identity for the Operator itself
 resource "azurerm_user_assigned_identity" "eso_identity" {
   name                = "eso-identity"
   location            = azurerm_resource_group.johannes_api_rg.location
   resource_group_name = azurerm_resource_group.johannes_api_rg.name
 }
 
-# 2. Grant ESO permission to read your Key Vault
 resource "azurerm_role_assignment" "eso_kv_reader" {
   scope                = azurerm_key_vault.vault.id
   role_definition_name = "Key Vault Secrets User"
@@ -151,8 +148,6 @@ resource "azurerm_role_assignment" "admin_secrets" {
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = data.azurerm_client_config.current.object_id
 }
-# 3. Establish the "Trust" (The Federated Credential)
-# This tells Azure: "Trust the 'eso-service-account' in the 'external-secrets' namespace"
 resource "azurerm_federated_identity_credential" "eso_trust" {
   name                = "eso-aks-trust"
   resource_group_name = azurerm_resource_group.johannes_api_rg.name
