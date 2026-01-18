@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: fastapi
-          image: ghcr.io/erling1/api_report_writer/fastapi-pi:latest
+          image: ghcr.io/erling1/fastapi-pi:latest
           ports:
             - containerPort: 80 
           resources:
