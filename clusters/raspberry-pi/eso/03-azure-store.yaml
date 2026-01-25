@@ -1,0 +1,19 @@
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: azure-kv-store
+spec:
+  provider:
+    azurekv:
+      authType: ServicePrincipal
+      vaultUrl: "https://kv-fastapi-ie0ahu.vault.azure.net/"
+      tenantId: "de20d87a-95ee-4c43-bdc2-37dda3770998"
+      authSecretRef:
+        clientId:
+          name: azure-kv-creds
+          key: clientid #rbac client id 
+          namespace: flux-system
+        clientSecret:
+          name: azure-kv-creds
+          key: clientsecret
+          namespace: flux-system

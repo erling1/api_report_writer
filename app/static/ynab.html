@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload & Export to YNAB</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        .container { max-width: 500px; margin: auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+        .status { margin-top: 15px; padding: 10px; display: none; border-radius: 4px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .loading { color: #856404; background-color: #fff3cd; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Financial Export</h2>
+    <p>Upload your file to trigger the <strong>YNAB Export</strong> process.</p>
+    
+    <input type="file" id="fileInput" />
+    <button onclick="handleUpload()">Upload and Export</button>
+
+    <div id="statusMessage" class="status"></div>
+    
+    <br>
+    <a href="/">← Back to Home</a>
+</div>
+
+<script>
+    async function handleUpload() {
+        const fileInput = document.getElementById('fileInput');
+        const statusDiv = document.getElementById('statusMessage');
+        
+        if (fileInput.files.length === 0) {
+            alert("Please select a file first!");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+
+        // Update UI
+        statusDiv.style.display = "block";
+        statusDiv.className = "status loading";
+        statusDiv.innerText = "Uploading file...";
+
+        try {
+            // 1. Send the file to /upload
+            const uploadResponse = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const uploadData = await uploadResponse.json();
+
+            // 2. Check if status_code is 200
+            if (uploadData.status_code === 200) {
+                statusDiv.innerText = "Upload successful! Triggering YNAB export...";
+                
+                // 3. Send the follow-up request to /ynab/export
+                const exportResponse = await fetch('/ynab/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        filename: uploadData.filename 
+                    })
+                });
+
+                if (exportResponse.ok) {
+                    statusDiv.className = "status success";
+                    statusDiv.innerText = `Success! File "${uploadData.filename}" processed and exported to YNAB.`;
+                } else {
+                    throw new Error("Upload worked, but YNAB export failed.");
+                }
+            } else {
+                throw new Error("Upload failed on the server.");
+            }
+
+        } catch (error) {
+            statusDiv.className = "status error";
+            statusDiv.innerText = "Error: " + error.message;
+        }
+    }
+</script>
+
+</body>
+</html>

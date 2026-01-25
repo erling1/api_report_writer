@@ -8,17 +8,21 @@ dependencies = [
     "aiofiles>=25.1.0",
     "authlib>=1.6.6",
     "cryptography>=46.0.3",
+    "duckdb>=1.4.3",
     "fastapi>=0.122.1",
     "httpx>=0.28.1",
     "jinja2>=3.1.6",
     "josepy>=2.2.0",
     "jwt>=1.4.0",
     "marimo>=0.18.2",
+    "pandas>=2.3.3",
+    "pyarrow>=23.0.0",
     "pycryptodome>=3.23.0",
     "pyjwt>=2.10.1",
     "python-multipart>=0.0.20",
     "requests>=2.32.5",
     "uvicorn>=0.38.0",
+    "ynab>=1.9.0",
 ]
 
 

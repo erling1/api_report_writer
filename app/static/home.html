@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,6 +9,8 @@
         <h1>Welcome, {{ session['userinfo']['name'] }}!</h1>
         <pre>{{ pretty }}</pre>
         <a href="/logout">Logout</a>
+        <br /><br />
+        <button onclick="window.location.href='/ynab/homepage'">Go to Mobilbanken </button>
     {% else %}
         <h1>Welcome, Guest!</h1>
         <a href="/login">Login</a>

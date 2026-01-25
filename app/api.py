@@ -1,7 +1,7 @@
 #fastapi
 from fastapi import Depends, FastAPI, HTTPException, status,Cookie, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi import FastAPI
+from fastapi import FastAPI,UploadFile
 from fastapi.responses import RedirectResponse,HTMLResponse,FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -29,6 +29,14 @@ from authlib.integrations.starlette_client import OAuth
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.config import Config
 
+
+#YNAB 
+from ynab import ApiClient, Configuration
+from ynab.api.transactions_api import TransactionsApi
+from ynab.models.new_transaction import NewTransaction
+from ynab.models.post_transactions_wrapper import PostTransactionsWrapper
+from utils.ynab import filter_mobilebanken_transactions, YNABAPI
+
 #general 
 import os
 import requests
@@ -36,26 +44,48 @@ import json
 import base64
 
 
+#Own defined utils 
+from api_utils.files import HandleFiles 
 
 
+UPLOAD_DIR = "./uploads"
 
 SECRET_KEY_JWT = "jwt_key" 
 MASTER_KEY = "master_key"
 ALGORITHM = "HS256"
 
+
 #Okta credentials
-AUTH0_DOMAIN = os.getenv("AUTH-DOMAIN")
-AUTH0_CLIENT_ID = os.getenv("AUTH-CLIENT-ID")
-AUTH0_CLIENT_SECRET = os.getenv("AUTH-CLIENT-SECRET")
-JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
-ISSUER = f"https://{AUTH0_DOMAIN}/" 
-AUTH0_AUDIENCE = os.getenv("AUTH-AUDIENCE") 
+if os.getenv("environment") == "dev":
+    AUTH0_DOMAIN = os.getenv("AUTH_DOMAIN")
+    AUTH0_CLIENT_ID = os.getenv("AUTH_CLIENT_ID")
+    AUTH0_CLIENT_SECRET = os.getenv("AUTH_CLIENT_SECRET")
+    print(f"environment is dev")
+    JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+    ISSUER = f"https://{AUTH0_DOMAIN}/" 
+    AUTH0_AUDIENCE = os.getenv("AUTH-AUDIENCE") 
+
+
+    ##YNAB: 
+    YNAB_TOKEN = os.getenv("YNAB_PAC")
+else: 
+    AUTH0_DOMAIN = os.getenv("AUTH-DOMAIN")
+    AUTH0_CLIENT_ID = os.getenv("AUTH-CLIENT-ID")
+    AUTH0_CLIENT_SECRET = os.getenv("AUTH-CLIENT-SECRET")
+    print(f"environment is prod")
+    JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+    ISSUER = f"https://{AUTH0_DOMAIN}/" 
+    AUTH0_AUDIENCE = os.getenv("AUTH-AUDIENCE") 
+    YNAB_TOKEN = os.getenv("YNAB-PAC")
+
 
 
 #FastAPI credentials
 API_SECRET_KEY = os.getenv("API-SECRET-KEY")
 
 jwks = requests.get(JWKS_URL).json()
+
+
 
 
 
@@ -101,122 +131,14 @@ class User(BaseModel):
     user_id: str | None = None  
     disabled: bool | None = None
 
-class UserInDB(User):
-    hashed_password: str
+class FileObject(BaseModel):
+    filename: str 
 
 
-fake_db = {
-    'erling': {
-        'username' : 'erling',
-        'email' : 'johannes@gmail',
-        'hashed_password' : 'hashed' + 'test'
+###### Need a place to initalise all classes i need 
+ynab_instance = YNABAPI()
+#####
 
-    },
-    
-}
-
-
-
-
-#I want one more way to access my api, mostly to practice setting up endpoints using various secure methods
-
-def generate_master_key_remote_api_call():
-
-    master_key = Fernet.generate_key()
-
-    from dotenv import set_key
-    set_key(".env", "master_key", master_key)
-
-
-def generate_token_remote_api_call(username:str, expire_delta: int):
-
-    master_key = os.getenv('master_key')
-
-    print(master_key)
-
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expire_delta)
-
-    payload = {
-        'user': username,
-        'expire': expire.timestamp()
-    }
-    
-
-    payload_bytes = json.dumps(payload).encode('utf-8')
-
-    encrypted_token = Fernet(master_key).encrypt(payload_bytes)
-
-    return encrypted_token
-
-
-
-
-
-async def get_token_from_cookie(request: Request) -> str:
-    """Retrieves the access token from the cookie."""
-    access_token = request.cookies.get("access_token")
-    if access_token is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated (Missing Cookie)",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return access_token
-
-async def fake_hash_password(password: str) -> str: 
-    return 'hashed' + password
-
-async def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-
-    to_encode = data.copy()
-
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-
-    to_encode.update({"exp": expire})
-
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY_JWT, algorithm=ALGORITHM)
-
-    logger.info(f"Successfully created JWT for user: {data.get('sub')}")
-
-    return encoded_jwt
-
-async def get_current_user_and_validate_token(token: str = Depends(get_token_from_cookie)) -> User:
-    """Decodes and validates the JWT, returning the user object."""
-
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY_JWT, algorithms=[ALGORITHM])
-        
-        username: str = payload.get("sub")
-
-        if username is None:
-            raise credentials_exception
-            
-        user_dict = fake_db.get(username)
-        if user_dict is None:
-             raise credentials_exception
-             
-        user = User(**user_dict) 
-
-        logger.info(f"User: {user.username}")
-
-    except JWTError:
-        raise credentials_exception
-        
-    return user
-
-async def get_current_active_user(current_user: User = Depends(get_current_user_and_validate_token)) -> User:
-    if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
 
 
 async def get_user_and_validate_session(request: Request):
@@ -286,6 +208,86 @@ async def get_user_and_validate_session(request: Request):
         return None 
 
 
+#I want one more way to access my api, mostly to practice setting up endpoints using various secure methods
+
+def generate_master_key_remote_api_call():
+
+    master_key = Fernet.generate_key()
+
+    from dotenv import set_key
+    set_key(".env", "master_key", master_key)
+
+
+def generate_token_remote_api_call(username:str, expire_delta: int):
+
+    master_key = os.getenv('master_key')
+
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expire_delta)
+
+    payload = {
+        'user': username,
+        'expire': expire.timestamp()
+    }
+    
+
+    payload_bytes = json.dumps(payload).encode('utf-8')
+
+    encrypted_token = Fernet(master_key).encrypt(payload_bytes)
+
+    return encrypted_token
+
+
+async def get_token_from_cookie(request: Request) -> str:
+    """Retrieves the access token from the cookie."""
+    access_token = request.cookies.get("access_token")
+    if access_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated (Missing Cookie)",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return access_token
+
+
+
+async def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+
+    to_encode = data.copy()
+
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    to_encode.update({"exp": expire})
+
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY_JWT, algorithm=ALGORITHM)
+
+    logger.info(f"Successfully created JWT for user: {data.get('sub')}")
+
+    return encoded_jwt
+
+
+#this needs some work 
+async def get_current_active_user(current_user: User = Depends(get_user_and_validate_session)) -> User:
+    if current_user.disabled:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -302,6 +304,11 @@ async def read_root(request: Request):
             "pretty": pretty_user
         }
     )
+
+@app.get("/ynab/homepage")
+async def get_ynab_homepage():
+    # Points to the actual location on your server's disk
+    return FileResponse("static/ynab.html")
 
 
 @app.get("/login")
@@ -331,50 +338,75 @@ async def test_api(user: User = Depends(get_user_and_validate_session)):
 
 
 
+#General stuff that needs to be available across many endpoints in the API 
+@app.post("/upload")
+async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validate_session) ):
+
+    os.makedirs(UPLOAD_DIR,exist_ok=True)
+
+    file_path = os.path.join(UPLOAD_DIR, filename)
+
+    try:
+        size = await HandleFiles.write_file(file=file, file_path=file_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload/save file: {e}")
 
 
 
-@app.post("/token")
-async def login(response: Response,form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
-
-    logger.info(f"Checking response in /token endpoint: {response.body}, also checking form_data: {form_data.password} {form_data.username} ")
-
-    user_dict = fake_db.get(form_data.username)
-
-    logger.info(f"user_dict :{user_dict}")
-
-    if not user_dict:
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
-
-    user = UserInDB(**user_dict)
-    logger.info(f"User (UserInDB): {user}")
-    hashed_password = await fake_hash_password(form_data.password)
-    logger.info(f"hashed_password: {hashed_password}")
-    if not hashed_password == user.hashed_password:
-        raise HTTPException(status_code=400, detail="Incorrect password")
-
-    access_token = await create_access_token(data={"sub": user.username})
+    return {
+        "status_code": 200,
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "size": size,
+    }
 
 
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,     # JS cannot access it — prevents XSS token theft
-        secure=False,      # Set to True if using HTTPS
-        samesite="strict", # Prevent CSRF unless using SameSite=None
-        max_age=3600       # 1 hour (optional)
-    )
+@app.post("/ynab/export")
+async def export_ynab(export_request: FileObject, user: User = Depends(get_user_and_validate_session)):
+    
+    logger.info(f"{export_request=}")
 
-    logger.info(f"User {form_data.username} successfully logged in and received cookie.")
 
-    return {"access_token":access_token, "token_type": "bearer"}
+    file_path = os.path.join(UPLOAD_DIR, export_request.filename)
+
+
+    logger.info(f"{file_path=}")
+
+    arrow, metadata = HandleFiles.read_mb_csv(file_path)
+    
+    ## this needs to be secret 
+    accounts = ['9', '1','8' ]
+
+    metadata = {}
+
+    for account in accounts: 
+        
+        transaction_table = filter_mobilebanken_transactions(arrow=arrow,from_account=account,to_account=account)
+        transactions = ynab_instance.create_transactions(transaction_table)
+        api_response = ynab_instance.import_transactions(transactions)
+        metadata[account] = api_response
+
+
+    return {
+        "status_code": 200, 
+        "metadata" : metadata
+    }
+        
+
+
+        
+    
+
+
+
+
 
 
 
 
 
 @app.get("/users/me")
-async def read_users_me(current_user: User = Depends(get_current_user_and_validate_token)):
+async def read_users_me(current_user: User = Depends(get_user_and_validate_session)):
     return current_user
 
 

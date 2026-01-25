@@ -20,6 +20,9 @@ spec:
           image: ghcr.io/erling1/fastapi-pi:latest
           ports:
             - containerPort: 80 
+          envFrom:
+            - secretRef:
+                name: fastapi-secrets
           resources:
             limits:
               memory: "256Mi"
