@@ -4,9 +4,9 @@ metadata:
   name: johannes
   namespace: flux-system
 spec:
-  interval: 10m                     # how often Flux should reconcile
-  path: ./clusters/raspberry-pi/johannes_api  # relative path from repo root to eso folder
-  prune: true                      # cleans up removed resources
+  interval: 10m                     
+  path: ./clusters/raspberry-pi/johannes_api  
+  prune: true                      
   sourceRef:
     kind: GitRepository
     name: flux-system 
