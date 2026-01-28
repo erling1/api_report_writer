@@ -3,6 +3,6 @@ kind: Kustomization
 resources:
 - gotk-components.yaml
 - gotk-sync.yaml
-- eso-kustomization.yaml 
-- eso-config-kustomization.yaml
-- johannes-kustomization.yaml
+#- eso-kustomization.yaml 
+#- eso-config-kustomization.yaml
+#- johannes-kustomization.yaml
