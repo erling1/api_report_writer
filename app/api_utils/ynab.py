@@ -5,8 +5,9 @@ from ynab.models.new_transaction import NewTransaction
 from ynab.models.post_transactions_wrapper import PostTransactionsWrapper
 import asyncio
 import duckdb 
-import pyarrow 
-
+import pyarrow as pa 
+import ynab 
+import os 
 async def filter_mobilebanken_transactions(arrow: pa.lib.Table, from_account:str, to_account:str):
 
     YNAB_ACCOUNT_ID: str = 'cb961646-4066-4349-9981-c56da6c0f444'
@@ -42,11 +43,12 @@ async def filter_mobilebanken_transactions(arrow: pa.lib.Table, from_account:str
 
 class YNABAPI:
 
-    async def __init__(self, budget_id: str ="690d3321-6bdc-4eef-b662-bd1346084552" ):
+    def __init__(self, budget_id: str ="690d3321-6bdc-4eef-b662-bd1346084552" ):
     
         self.budget_id = budget_id
+        self.YNAB_TOKEN = os.getenv("YNAB_TOKEN")
 
-        self.configuration = ynab.Configuration(access_token = YNAB_TOKEN)
+        self.configuration = ynab.Configuration(access_token = self.YNAB_TOKEN)
         self._client: ynab.ApiClient = None
 
     async def _create_client(self)-> ynab.ApiClient: 
@@ -73,12 +75,12 @@ class YNABAPI:
 
         ### unsure if it is the most optimal to create a new client, or reuse a create client 
         ### right now the with stat
-        with self._create_client() as client:
+        with await self._create_client() as client:
             api_instance = TransactionsApi(api_client)
 
             data = PostTransactionsWrapper(transactions)
 
-             try:
+            try:
             
                 api_response = api_instance.create_transaction(budget_id, data)
                 

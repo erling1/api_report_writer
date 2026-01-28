@@ -35,7 +35,7 @@ from ynab import ApiClient, Configuration
 from ynab.api.transactions_api import TransactionsApi
 from ynab.models.new_transaction import NewTransaction
 from ynab.models.post_transactions_wrapper import PostTransactionsWrapper
-from utils.ynab import filter_mobilebanken_transactions, YNABAPI
+from api_utils.ynab import filter_mobilebanken_transactions, YNABAPI
 
 #general 
 import os
@@ -413,3 +413,8 @@ async def read_users_me(current_user: User = Depends(get_user_and_validate_sessi
 @app.get("/items/{item_id}")
 async def read_item(item_id: int, q: Union[str, None] = None):
     return {"item_id": item_id, "q": q}
+
+
+
+
+
