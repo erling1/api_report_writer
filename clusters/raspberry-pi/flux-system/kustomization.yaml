@@ -3,5 +3,3 @@ kind: Kustomization
 resources:
 - gotk-components.yaml
 - gotk-sync.yaml
-- ../eso                # Legg til denne
-- ../johannes_api       # Legg til denne
