@@ -5,6 +5,10 @@ metadata:
   namespace: flux-system 
 spec:
   interval: 1h
+  # This "wait" is crucial—it forces the HelmRelease to stay in 
+  # "Progressing" until the pods are healthy and CRDs are usable.
+  wait: true
+  timeout: 5m
   chart:
     spec:
       chart: external-secrets
@@ -15,7 +19,10 @@ spec:
         namespace: flux-system
   install:
     createNamespace: true
+    crds: CreateReplace # <--- Add this
     remediation:
       retries: 3
+  upgrade:
+    crds: CreateReplace # <--- Add this
   values:
     installCRDs: true
