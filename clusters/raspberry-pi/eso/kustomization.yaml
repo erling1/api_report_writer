@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - 01-eso-repo.yaml
+  - 02-eso-release.yaml
+  - 03-azure-store.yaml
+  - 04-external-secret.yaml
