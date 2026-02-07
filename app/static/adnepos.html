@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Archive Digitizer</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f0f2f5; }
+        header { background: #2c3e50; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Gallery & Preview */
+        .image-pane { flex: 1.2; display: flex; flex-direction: column; border-right: 2px solid #ddd; background: #e9ecef; }
+        .gallery-bar { height: 120px; background: #dfe4ea; display: flex; gap: 10px; padding: 10px; overflow-x: auto; border-bottom: 1px solid #ccc; }
+        .thumbnail { height: 100px; width: 80px; object-fit: cover; cursor: pointer; border-radius: 4px; border: 3px solid transparent; background: white; flex-shrink: 0; transition: 0.2s; }
+        .thumbnail.active { border-color: #007bff; transform: scale(0.95); }
+        .main-preview { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 20px; }
+        #doc-image { max-width: 100%; height: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-radius: 4px; display: none; }
+
+        /* Controls */
+        .toolbar { background: #fff; padding: 10px 20px; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; }
+        .editor-pane { flex: 1; display: flex; flex-direction: column; padding: 20px; background: white; }
+        textarea { flex: 1; width: 100%; padding: 15px; font-size: 16px; font-family: 'Courier New', monospace; border: 1px solid #ccc; border-radius: 4px; resize: none; }
+        
+        button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 6px; font-weight: 600; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-upload { background: #28a745; color: white; }
+        .loading { display: none; margin-left: 10px; color: #555; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div class="toolbar">
+    <input type="file" id="fileInput" hidden accept="image/*" multiple>
+    <button class="btn-upload" onclick="document.getElementById('fileInput').click()">📁 Step 1: Upload Images</button>
+    <button class="btn-primary" onclick="runTranscribe()">✨ Step 2: Transcribe Selected</button>
+    <span id="loader" class="loading">Please wait...</span>
+</div>
+
+<div class="workspace">
+    <div class="image-pane">
+        <div class="gallery-bar" id="gallery"></div>
+        <div class="main-preview">
+            <div id="placeholder" style="color:#666; margin-top:100px;">Upload images to start</div>
+            <img id="doc-image" src="">
+        </div>
+    </div>
+
+    <div class="editor-pane">
+        <textarea id="editor" placeholder="Transcription result will appear here..."></textarea>
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const gallery = document.getElementById('gallery');
+    const docImage = document.getElementById('doc-image');
+    const placeholder = document.getElementById('placeholder');
+    const loader = document.getElementById('loader');
+    const editor = document.getElementById('editor');
+
+    // --- UNIFIED ERROR HANDLER ---
+    async function handleResponse(response) {
+        const data = await response.json();
+        if (!response.ok) {
+            const errorMsg = data.detail || "Something went wrong";
+            alert(`Error: ${errorMsg}`);
+            throw new Error(errorMsg);
+        }
+        return data;
+    }
+
+    // --- UPLOAD LOGIC ---
+    fileInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files);
+        loader.style.display = 'inline';
+        loader.innerText = "Uploading...";
+
+        for (const file of files) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload', { method: 'POST', body: formData });
+                const result = await handleResponse(response);
+                
+                // Add to gallery using the filename returned by the backend
+                addThumbnailToGallery(file, result.filename);
+            } catch (err) { console.error(err); }
+        }
+        loader.style.display = 'none';
+    });
+
+    function addThumbnailToGallery(file, filename) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            img.classList.add('thumbnail');
+            img.dataset.filename = filename; // Store the backend filename here
+            
+            img.onclick = () => {
+                document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
+                img.classList.add('active');
+                docImage.src = img.src;
+                docImage.style.display = 'block';
+                placeholder.style.display = 'none';
+            };
+            gallery.appendChild(img);
+            if (gallery.children.length === 1) img.click();
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // --- TRANSCRIBE LOGIC ---
+    async function runTranscribe() {
+      const activeThumb = document.querySelector('.thumbnail.active');
+      if (!activeThumb) return alert("Select an image first!");
+
+      const filename = activeThumb.dataset.filename;
+      const loader = document.getElementById('loader');
+      const editor = document.getElementById('editor');
+
+      loader.style.display = 'inline';
+      loader.innerText = "Processing Transcribe...";
+
+      try {
+          const response = await fetch('/adnepos/transcribe', {
+              // Updated to ensure we're hitting your actual endpoint
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filenames: [filename] }) 
+          });
+
+          // handleResponse parses the JSON for us
+          const result = await handleResponse(response);
+
+          // 1. Build the display string
+          // We use result.transcription (matching your Pydantic/Gemini schema)
+          let displayContent = `--- TRANSCRIPTION ---\n`;
+          displayContent += result.transcription || "No text found.";
+          displayContent += `\n\n--- METADATA ---\n`;
+
+          // 2. Format Metadata
+          if (result.metadata && typeof result.metadata === 'object') {
+              // This loops through the metadata object and prints key-value pairs
+              const metaLines = Object.entries(result.metadata)
+                  .map(([key, value]) => `${key.toUpperCase()}: ${value}`)
+                  .join('\n');
+              displayContent += metaLines || "No metadata extracted.";
+          } else {
+              displayContent += "No metadata available.";
+          }
+
+          // 3. Update the UI
+          editor.value = displayContent;
+
+      } catch (err) {
+          console.error("Transcription failed:", err);
+          // Error is already alerted in handleResponse
+      } finally {
+          loader.style.display = 'none';
+      }
+  }
+</script>
+</body>
+</html>

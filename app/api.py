@@ -1,10 +1,11 @@
 #fastapi
-from fastapi import Depends, FastAPI, HTTPException, status,Cookie, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, status,Cookie, Request, Response 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import FastAPI,UploadFile
-from fastapi.responses import RedirectResponse,HTMLResponse,FileResponse
+from fastapi.responses import RedirectResponse,HTMLResponse,FileResponse,JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 
 from typing import Union
 import asyncio 
@@ -37,14 +38,27 @@ from ynab.models.new_transaction import NewTransaction
 from ynab.models.post_transactions_wrapper import PostTransactionsWrapper
 from api_utils.ynab import filter_mobilebanken_transactions, YNABAPI
 
+
+#Transcribing
+from api_utils.adnepos import Transcriber
+
+
+#Gemini 
+from google import genai
+from google.genai import types
+
+
 #general 
 import os
 import requests
 import json 
 import base64
+import mimetypes
 
 
-#Own defined utils 
+
+
+#Own defined utilss 
 from api_utils.files import HandleFiles 
 
 
@@ -56,14 +70,15 @@ ALGORITHM = "HS256"
 
 
 #Okta credentials
-if os.getenv("environment") == "dev":
+if os.getenv("ENVIRONMENT") == "dev":
     AUTH0_DOMAIN = os.getenv("AUTH_DOMAIN")
     AUTH0_CLIENT_ID = os.getenv("AUTH_CLIENT_ID")
     AUTH0_CLIENT_SECRET = os.getenv("AUTH_CLIENT_SECRET")
     print(f"environment is dev")
+    print(f"{AUTH0_DOMAIN=}")
     JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
     ISSUER = f"https://{AUTH0_DOMAIN}/" 
-    AUTH0_AUDIENCE = os.getenv("AUTH-AUDIENCE") 
+    AUTH0_AUDIENCE = os.getenv("AUTH_AUDIENCE") 
 
 
     ##YNAB: 
@@ -91,8 +106,22 @@ jwks = requests.get(JWKS_URL).json()
 
 app = FastAPI()
 
-templates = Jinja2Templates(directory="static")
 
+origins = [
+    "http://localhost:8000", 
+    "http://127.0.0.1:8000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],         
+    allow_credentials=True,
+    allow_methods=["*"],          
+    allow_headers=["*"],           
+)
+
+templates = Jinja2Templates(directory="static")
+mimetypes.add_type("application/wasm", ".wasm")
 app.mount("/static", StaticFiles(directory="static", html=True), name="static")
 
 app.add_middleware(SessionMiddleware, secret_key=API_SECRET_KEY)
@@ -134,10 +163,50 @@ class User(BaseModel):
 class FileObject(BaseModel):
     filename: str 
 
+class TranscribeRequest(BaseModel):
+    filenames: list[str] 
+    #transcribe_all_images: bool
+
+
+####CLIENTS 
+
+gemini_client = genai.Client() #Needs gemini api key in the env 
+
+
 
 ###### Need a place to initalise all classes i need 
 ynab_instance = YNABAPI()
+transcriber_instance = Transcriber(client=gemini_client)
 #####
+
+
+
+
+
+
+
+
+
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+
+    logging.info(f"Global Error Handler: ")
+
+    if exc.status_code == 401: 
+        return RedirectResponse(url="/login")
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "error",
+            "code": exc.status_code,
+            "message": exc.detail,
+            "path": request.url.path
+        },
+    )
+
+
 
 
 
@@ -154,7 +223,7 @@ async def get_user_and_validate_session(request: Request):
 
     token = user.get("access_token")
     
-    logger.info(f"token: {token}")
+    logger.info(f"{token=}")
     
     id_token = user.get("id_token")
 
@@ -163,16 +232,16 @@ async def get_user_and_validate_session(request: Request):
         headers = jwt.get_unverified_header(id_token)
         kid = headers.get("kid")
     else:
-        raise Exception("Could not find kid for verification of access_token")
+        raise HTTPException(
+                status_code= status.HTTP_401_UNAUTHORIZED,
+                detail = "Could not find KID for verification of Access token")
 
-    logger.info(f"checking kid : {kid}")
     
     for key in jwks["keys"]:
         kid_in_key = key["kid"]
         logger.info(f" kid in keys: {kid_in_key}")
         if key["kid"] == kid:
             signing_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key))
-    logger.info(f"checking user content: {user}")
 
     userinfo = user.get("userinfo", {})
 
@@ -186,6 +255,9 @@ async def get_user_and_validate_session(request: Request):
     header = jwt.get_unverified_header(token)
     algo = header.get("alg")
     logger.info(f"issuer: {ISSUER}") 
+
+    logger.info(f" audience from env: {AUTH0_AUDIENCE}")
+    logger.info(f"audience from token: {header.items()}")
 
 
 
@@ -205,7 +277,11 @@ async def get_user_and_validate_session(request: Request):
 
     except Exception as e:
         logger.info(f"JWT decoding error, Exception: {e}")
-        return None 
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="JWT decoding error"
+        )
+        
 
 
 #I want one more way to access my api, mostly to practice setting up endpoints using various secure methods
@@ -307,8 +383,26 @@ async def read_root(request: Request):
 
 @app.get("/ynab/homepage")
 async def get_ynab_homepage():
-    # Points to the actual location on your server's disk
     return FileResponse("static/ynab.html")
+
+@app.get("/adnepos")
+async def adnepos(user: User = Depends(get_user_and_validate_session)):
+    return FileResponse("static/adnepos.html")
+
+@app.get("/cv")
+async def cv():
+    return FileResponse("static/cv.html")
+
+@app.get("/cv/game")
+async def cv():
+    return FileResponse("static/rust/cv_game/index.html")
+
+@app.get("/cv_game_redirect")
+def redirect_me():
+    return RedirectResponse(url="/cv")
+
+
+
 
 
 @app.get("/login")
@@ -344,12 +438,17 @@ async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validat
 
     os.makedirs(UPLOAD_DIR,exist_ok=True)
 
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+
+    logging.info(f"Saving file to path on server: {file_path=}")
 
     try:
         size = await HandleFiles.write_file(file=file, file_path=file_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload/save file: {e}")
+
+
+    logging.info(f"File Saved")
 
 
 
@@ -359,6 +458,46 @@ async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validat
         "content_type": file.content_type,
         "size": size,
     }
+
+
+@app.post("/adnepos/transcribe")
+async def transcribe_image(transcribe_request: TranscribeRequest,  user: User = Depends(get_user_and_validate_session)):
+
+    logging.info(f"Checking {transcribe_request=}")
+    try: 
+        images = [os.path.join(UPLOAD_DIR,image_filename) for image_filename in transcribe_request.filenames]
+    except HTTPException as e:
+        raise HTTPException(
+            status_code= 400,
+            detail="Image not found.",
+        )
+
+    
+    try: 
+        image_bytes = await asyncio.gather(*[HandleFiles.read_file(file_path=image_path, mode='rb') for image_path in images])
+    except IOError as e: 
+        logging.info(f"Failed to read file")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed reading file"
+        )
+
+    ## need to add support for multiple images here 
+    logger.info(f"Checking image: {image_bytes[0]}")
+    result = await transcriber_instance.process_image(image_bytes[0])
+
+    logger.info(f"Transcribed text: {result}")
+    logger.info(f"Type of result: {type(result)}")
+    #transactions = images[0]
+    
+    logger.info(f"result dict : {result.dict()}")
+    
+
+    return result.dict()
+
+
+    
+
 
 
 @app.post("/ynab/export")

@@ -1,4 +1,4 @@
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 import pandas as pd 
 import pyarrow as pd 
 import duckdb 
@@ -16,6 +16,20 @@ class HandleFiles:
             f.write(content)
 
         return len(content)
+
+    @staticmethod 
+    async def read_file(file_path:str,mode: str): 
+    
+        try:
+            with open(file=file_path,mode=mode) as f:
+                file = f.read()
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404,
+                detail="File Not found"
+            )
+
+        return file
 
     @staticmethod
     async def read_mb_csv(file_path: str):
