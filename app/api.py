@@ -11,7 +11,7 @@ from typing import Union
 import asyncio 
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
-import logging
+from api_utils.logger import logger 
 
 #Encryption
 from cryptography.fernet import Fernet
@@ -80,6 +80,9 @@ if os.getenv("ENVIRONMENT") == "dev":
     ISSUER = f"https://{AUTH0_DOMAIN}/" 
     AUTH0_AUDIENCE = os.getenv("AUTH_AUDIENCE") 
 
+    BSU_ACCOUNT_NR = os.getenv("BSU_ACCOUNT_NR")
+    SPAREKONTO_18_23_ACCOUNT_NR = os.getenv("SPAREKONTO_18_23_ACCOUNT_NR")
+    CHECKING_ACCOUNT_NR = os.getenv("CHECKING_ACCOUNT_NR")
 
     ##YNAB: 
     YNAB_TOKEN = os.getenv("YNAB_PAC")
@@ -141,11 +144,7 @@ oauth.register(
 )
 
 
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+
 
 #this would potentially only be of programmatic access where you put the token in the json payload, preferrably encrypted 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -175,7 +174,7 @@ gemini_client = genai.Client() #Needs gemini api key in the env
 
 
 ###### Need a place to initalise all classes i need 
-ynab_instance = YNABAPI()
+ynab_instance = YNABAPI(YNAB_PAC=YNAB_TOKEN)
 transcriber_instance = Transcriber(client=gemini_client)
 #####
 
@@ -191,7 +190,8 @@ transcriber_instance = Transcriber(client=gemini_client)
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
-    logging.info(f"Global Error Handler: ")
+    logger.info(f"Global Error Handler: {exc.status_code=}, {exc.detail=} ")
+
 
     if exc.status_code == 401: 
         return RedirectResponse(url="/login")
@@ -440,7 +440,7 @@ async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validat
 
     file_path = os.path.join(UPLOAD_DIR, file.filename)
 
-    logging.info(f"Saving file to path on server: {file_path=}")
+    logger.info(f"Saving file to path on server: {file_path=}")
 
     try:
         size = await HandleFiles.write_file(file=file, file_path=file_path)
@@ -448,7 +448,7 @@ async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validat
         raise HTTPException(status_code=500, detail=f"Failed to upload/save file: {e}")
 
 
-    logging.info(f"File Saved")
+    logger.info(f"File Saved")
 
 
 
@@ -463,7 +463,7 @@ async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validat
 @app.post("/adnepos/transcribe")
 async def transcribe_image(transcribe_request: TranscribeRequest,  user: User = Depends(get_user_and_validate_session)):
 
-    logging.info(f"Checking {transcribe_request=}")
+    logger.info(f"Checking {transcribe_request=}")
     try: 
         images = [os.path.join(UPLOAD_DIR,image_filename) for image_filename in transcribe_request.filenames]
     except HTTPException as e:
@@ -476,7 +476,7 @@ async def transcribe_image(transcribe_request: TranscribeRequest,  user: User = 
     try: 
         image_bytes = await asyncio.gather(*[HandleFiles.read_file(file_path=image_path, mode='rb') for image_path in images])
     except IOError as e: 
-        logging.info(f"Failed to read file")
+        logger.info(f"Failed to read file")
         raise HTTPException(
             status_code=500,
             detail="Failed reading file"
@@ -510,19 +510,24 @@ async def export_ynab(export_request: FileObject, user: User = Depends(get_user_
 
 
     logger.info(f"{file_path=}")
-
-    arrow, metadata = HandleFiles.read_mb_csv(file_path)
-    
+    try:
+        arrow = await HandleFiles.read_csv(file_path)
+    except Exception as e: 
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed reading Mobilbanken CSV file from path: {file_path}, Exception: {e}")
     ## this needs to be secret 
-    accounts = ['9', '1','8' ]
+    accounts = [SPAREKONTO_18_23_ACCOUNT_NR, CHECKING_ACCOUNT_NR,BSU_ACCOUNT_NR ]
 
     metadata = {}
 
     for account in accounts: 
         
-        transaction_table = filter_mobilebanken_transactions(arrow=arrow,from_account=account,to_account=account)
-        transactions = ynab_instance.create_transactions(transaction_table)
-        api_response = ynab_instance.import_transactions(transactions)
+        transaction_table, metadata = await filter_mobilebanken_transactions(arrow=arrow,from_account=account,to_account=account)
+        logger.info(f"{transaction_table=}")
+        transactions = await ynab_instance.create_transactions(transaction_table)
+        logger.info(f"{transactions=}")
+        api_response = await ynab_instance.import_transactions(transactions)
         metadata[account] = api_response
 
 
