@@ -3,51 +3,572 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Upload & Export to YNAB</title>
+    <title>YNAB Export</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-        .container { max-width: 500px; margin: auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
-        .status { margin-top: 15px; padding: 10px; display: none; border-radius: 4px; }
-        .success { background-color: #d4edda; color: #155724; }
-        .error { background-color: #f8d7da; color: #721c24; }
-        .loading { color: #856404; background-color: #fff3cd; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 16px;
+        }
+
+        .page {
+            width: 100%;
+            max-width: 640px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #8b949e;
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 32px;
+            transition: color 0.2s;
+        }
+        .back-link:hover { color: #e1e4e8; }
+        .back-link svg { width: 16px; height: 16px; }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #f0f6fc;
+        }
+
+        .subtitle {
+            color: #8b949e;
+            font-size: 15px;
+            margin-bottom: 32px;
+        }
+
+        /* Upload card */
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 20px;
+        }
+
+        .drop-zone {
+            border: 2px dashed #30363d;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            position: relative;
+        }
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: #58a6ff;
+            background: rgba(88, 166, 255, 0.04);
+        }
+
+        .drop-zone svg {
+            width: 40px;
+            height: 40px;
+            color: #484f58;
+            margin-bottom: 12px;
+        }
+
+        .drop-zone p {
+            color: #8b949e;
+            font-size: 14px;
+        }
+        .drop-zone p span {
+            color: #58a6ff;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .drop-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .file-info {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+        .file-info.visible { display: flex; }
+
+        .file-info svg {
+            width: 20px;
+            height: 20px;
+            color: #58a6ff;
+            flex-shrink: 0;
+        }
+
+        .file-info .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #c9d1d9;
+        }
+
+        .file-info .file-size {
+            color: #8b949e;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .file-info .remove-btn {
+            background: none;
+            border: none;
+            color: #8b949e;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            font-size: 18px;
+            transition: color 0.2s;
+        }
+        .file-info .remove-btn:hover { color: #f85149; }
+
+        .export-btn {
+            width: 100%;
+            padding: 14px;
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .export-btn:hover { background: #2ea043; }
+        .export-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+        .progress-container.visible { display: block; }
+
+        .progress-label {
+            font-size: 13px;
+            color: #8b949e;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar-bg {
+            height: 6px;
+            background: #21262d;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #58a6ff;
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        /* Status messages */
+        .status-banner {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+        .status-banner.visible { display: flex; }
+        .status-banner svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+        .status-banner.success {
+            background: rgba(35, 134, 54, 0.15);
+            border: 1px solid #238636;
+            color: #3fb950;
+        }
+        .status-banner.error {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid #f8514973;
+            color: #f85149;
+        }
+
+        /* Metadata section */
+        .metadata-section {
+            display: none;
+        }
+        .metadata-section.visible { display: block; }
+
+        .metadata-section h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #f0f6fc;
+        }
+
+        .account-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 12px;
+        }
+
+        .account-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .account-label {
+            font-size: 13px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .account-badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+        .account-badge.ok {
+            background: rgba(35, 134, 54, 0.2);
+            color: #3fb950;
+        }
+        .account-badge.fail {
+            background: rgba(248, 81, 73, 0.15);
+            color: #f85149;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .stat-item {
+            background: #0d1117;
+            border-radius: 8px;
+            padding: 14px;
+        }
+
+        .stat-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #f0f6fc;
+            margin-bottom: 2px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #8b949e;
+        }
+
+        /* Raw response toggle */
+        .raw-toggle {
+            margin-top: 16px;
+        }
+
+        .raw-toggle summary {
+            font-size: 13px;
+            color: #8b949e;
+            cursor: pointer;
+            user-select: none;
+            padding: 4px 0;
+        }
+        .raw-toggle summary:hover { color: #c9d1d9; }
+
+        .raw-content {
+            margin-top: 8px;
+            padding: 16px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            color: #c9d1d9;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Financial Export</h2>
-    <p>Upload your file to trigger the <strong>YNAB Export</strong> process.</p>
-    
-    <input type="file" id="fileInput" />
-    <button onclick="handleUpload()">Upload and Export</button>
+<div class="page">
+    <a href="/" class="back-link">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 12.53a.75.75 0 01-1.06 0L2.47 8.28a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L4.81 7h7.44a.75.75 0 010 1.5H4.81l2.97 2.97a.75.75 0 010 1.06z"/></svg>
+        Back to Home
+    </a>
 
-    <div id="statusMessage" class="status"></div>
-    
-    <br>
-    <a href="/">← Back to Home</a>
+    <h1>YNAB Export</h1>
+    <p class="subtitle">Upload your Mobilbanken CSV to sync transactions with YNAB.</p>
+
+    <div class="card">
+        <div class="drop-zone" id="dropZone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p>Drag & drop your CSV here, or <span>browse</span></p>
+            <input type="file" id="fileInput" accept=".csv" />
+        </div>
+
+        <div class="file-info" id="fileInfo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span class="file-name" id="fileName"></span>
+            <span class="file-size" id="fileSize"></span>
+            <button class="remove-btn" id="removeBtn" title="Remove file">&times;</button>
+        </div>
+
+        <button class="export-btn" id="exportBtn" disabled onclick="handleUpload()">
+            Export to YNAB
+        </button>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-label" id="progressLabel">Uploading file...</div>
+            <div class="progress-bar-bg">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </div>
+
+        <div class="status-banner" id="statusBanner">
+            <svg id="statusIcon" viewBox="0 0 16 16" fill="currentColor"></svg>
+            <span id="statusText"></span>
+        </div>
+    </div>
+
+    <div class="metadata-section" id="metadataSection">
+        <h2>Export Results</h2>
+        <div id="metadataCards"></div>
+
+        <details class="raw-toggle">
+            <summary>View raw response</summary>
+            <div class="raw-content" id="rawResponse"></div>
+        </details>
+    </div>
 </div>
 
 <script>
-    async function handleUpload() {
-        const fileInput = document.getElementById('fileInput');
-        const statusDiv = document.getElementById('statusMessage');
-        
-        if (fileInput.files.length === 0) {
-            alert("Please select a file first!");
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const removeBtn = document.getElementById('removeBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressLabel = document.getElementById('progressLabel');
+    const progressBar = document.getElementById('progressBar');
+    const statusBanner = document.getElementById('statusBanner');
+    const statusIcon = document.getElementById('statusIcon');
+    const statusText = document.getElementById('statusText');
+    const metadataSection = document.getElementById('metadataSection');
+    const metadataCards = document.getElementById('metadataCards');
+    const rawResponse = document.getElementById('rawResponse');
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    function formatAmount(milliUnits) {
+        if (milliUnits == null) return '—';
+        return (milliUnits / 1000).toLocaleString('nb-NO', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }) + ' kr';
+    }
+
+    function maskAccount(account) {
+        if (!account || account.length < 4) return account || 'Unknown';
+        return '••••' + account.slice(-4);
+    }
+
+    function setFile(file) {
+        if (!file) return;
+        fileName.textContent = file.name;
+        fileSize.textContent = formatBytes(file.size);
+        fileInfo.classList.add('visible');
+        exportBtn.disabled = false;
+        resetStatus();
+    }
+
+    function clearFile() {
+        fileInput.value = '';
+        fileInfo.classList.remove('visible');
+        exportBtn.disabled = true;
+    }
+
+    function resetStatus() {
+        statusBanner.classList.remove('visible', 'success', 'error');
+        progressContainer.classList.remove('visible');
+        metadataSection.classList.remove('visible');
+    }
+
+    function showStatus(type, message) {
+        statusBanner.className = 'status-banner visible ' + type;
+        if (type === 'success') {
+            statusIcon.innerHTML = '<path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>';
+        } else {
+            statusIcon.innerHTML = '<path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>';
+        }
+        statusText.textContent = message;
+    }
+
+    function setProgress(pct, label) {
+        progressContainer.classList.add('visible');
+        progressBar.style.width = pct + '%';
+        if (label) progressLabel.textContent = label;
+    }
+
+    function renderMetadata(metadata) {
+        metadataCards.innerHTML = '';
+
+        if (!metadata || typeof metadata !== 'object') {
+            metadataCards.innerHTML = '<p style="color:#8b949e;font-size:14px;">No metadata returned.</p>';
+            metadataSection.classList.add('visible');
             return;
         }
 
-        const formData = new FormData();
-        formData.append("file", fileInput.files[0]);
+        const keys = Object.keys(metadata);
 
-        // Update UI
-        statusDiv.style.display = "block";
-        statusDiv.className = "status loading";
-        statusDiv.innerText = "Uploading file...";
+        for (const key of keys) {
+            const data = metadata[key];
+            const card = document.createElement('div');
+            card.className = 'account-card';
+
+            const hasError = data && data.detail;
+            const stats = data && !hasError ? data : null;
+
+            let statsHTML = '';
+
+            if (stats && typeof stats === 'object') {
+                // Try to pull out useful fields from the YNAB API response or our metadata
+                const fields = [];
+
+                // Handle various response shapes
+                if (stats.number_of_transactions != null) {
+                    fields.push({ label: 'Transactions', value: stats.number_of_transactions });
+                }
+                if (stats.min_amount != null) {
+                    fields.push({ label: 'Min Amount', value: formatAmount(stats.min_amount) });
+                }
+                if (stats.max_amount != null) {
+                    fields.push({ label: 'Max Amount', value: formatAmount(stats.max_amount) });
+                }
+                if (stats.avg_amount != null) {
+                    fields.push({ label: 'Avg Amount', value: formatAmount(Math.round(stats.avg_amount)) });
+                }
+
+                // YNAB API response fields
+                if (stats.data) {
+                    const d = stats.data;
+                    if (d.duplicate_import_ids && d.duplicate_import_ids.length > 0) {
+                        fields.push({ label: 'Duplicates Skipped', value: d.duplicate_import_ids.length });
+                    }
+                    if (d.transaction_ids && d.transaction_ids.length > 0) {
+                        fields.push({ label: 'Imported', value: d.transaction_ids.length });
+                    }
+                }
+
+                if (fields.length === 0) {
+                    // Fallback: show all top-level keys
+                    for (const [k, v] of Object.entries(stats)) {
+                        if (typeof v !== 'object') {
+                            fields.push({ label: k.replace(/_/g, ' '), value: v });
+                        }
+                    }
+                }
+
+                statsHTML = '<div class="stats-grid">' +
+                    fields.map(f => `
+                        <div class="stat-item">
+                            <div class="stat-value">${f.value}</div>
+                            <div class="stat-label">${f.label}</div>
+                        </div>
+                    `).join('') +
+                    '</div>';
+            } else if (hasError) {
+                statsHTML = `<p style="color:#f85149;font-size:14px;">${data.detail}</p>`;
+            } else {
+                statsHTML = '<p style="color:#8b949e;font-size:14px;">Processed successfully</p>';
+            }
+
+            card.innerHTML = `
+                <div class="account-header">
+                    <span class="account-label">Account ${maskAccount(key)}</span>
+                    <span class="account-badge ${hasError ? 'fail' : 'ok'}">${hasError ? 'Failed' : 'Synced'}</span>
+                </div>
+                ${statsHTML}
+            `;
+
+            metadataCards.appendChild(card);
+        }
+
+        metadataSection.classList.add('visible');
+    }
+
+    // File input events
+    fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+    removeBtn.addEventListener('click', clearFile);
+
+    // Drag & drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            setFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    async function handleUpload() {
+        if (fileInput.files.length === 0) return;
+
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append("file", file);
+
+        resetStatus();
+        exportBtn.disabled = true;
+        setProgress(15, 'Uploading file...');
 
         try {
-            // 1. Send the file to /upload
             const uploadResponse = await fetch('/upload', {
                 method: 'POST',
                 body: formData
@@ -55,32 +576,37 @@
 
             const uploadData = await uploadResponse.json();
 
-            // 2. Check if status_code is 200
-            if (uploadData.status_code === 200) {
-                statusDiv.innerText = "Upload successful! Triggering YNAB export...";
-                
-                // 3. Send the follow-up request to /ynab/export
-                const exportResponse = await fetch('/ynab/export', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        filename: uploadData.filename 
-                    })
-                });
+            if (uploadData.status_code !== 200) {
+                throw new Error(uploadData.message || 'Upload failed on the server.');
+            }
 
-                if (exportResponse.ok) {
-                    statusDiv.className = "status success";
-                    statusDiv.innerText = `Success! File "${uploadData.filename}" processed and exported to YNAB.`;
-                } else {
-                    throw new Error("Upload worked, but YNAB export failed.");
-                }
+            setProgress(50, 'Exporting transactions to YNAB...');
+
+            const exportResponse = await fetch('/ynab/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: uploadData.filename })
+            });
+
+            const exportData = await exportResponse.json();
+
+            setProgress(100, 'Done');
+
+            if (exportResponse.ok && exportData.status_code === 200) {
+                showStatus('success', 'Transactions exported to YNAB successfully.');
+                renderMetadata(exportData.metadata);
+                rawResponse.textContent = JSON.stringify(exportData, null, 2);
             } else {
-                throw new Error("Upload failed on the server.");
+                const errMsg = exportData.message || exportData.detail || 'YNAB export failed.';
+                throw new Error(errMsg);
             }
 
         } catch (error) {
-            statusDiv.className = "status error";
-            statusDiv.innerText = "Error: " + error.message;
+            setProgress(100);
+            showStatus('error', error.message);
+            progressBar.style.background = '#f85149';
+        } finally {
+            exportBtn.disabled = false;
         }
     }
 </script>

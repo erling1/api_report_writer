@@ -1,23 +1,431 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <title>Home</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Johannes</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 16px;
+        }
+
+        .page {
+            width: 100%;
+            max-width: 640px;
+        }
+
+        /* Header / user profile */
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: 2px solid #30363d;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .avatar-placeholder {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: #21262d;
+            border: 2px solid #30363d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: #484f58;
+        }
+
+        .profile-text h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #f0f6fc;
+            line-height: 1.3;
+        }
+
+        .profile-text .email {
+            font-size: 14px;
+            color: #8b949e;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .logout-btn {
+            background: none;
+            border: 1px solid #30363d;
+            color: #8b949e;
+            font-size: 13px;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: color 0.2s, border-color 0.2s;
+            flex-shrink: 0;
+            margin-top: 4px;
+        }
+        .logout-btn:hover {
+            color: #f0f6fc;
+            border-color: #8b949e;
+        }
+
+        /* Section label */
+        .section-label {
+            font-size: 12px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+
+        /* Navigation cards */
+        .nav-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .nav-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px 24px;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .nav-card:hover {
+            border-color: #58a6ff;
+            background: #1c2128;
+        }
+
+        .nav-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .nav-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .nav-icon.green  { background: rgba(35, 134, 54, 0.15); color: #3fb950; }
+        .nav-icon.blue   { background: rgba(88, 166, 255, 0.1); color: #58a6ff; }
+        .nav-icon.purple { background: rgba(188, 140, 255, 0.1); color: #bc8cff; }
+        .nav-icon.orange { background: rgba(210, 153, 34, 0.12); color: #d29922; }
+
+        .nav-card-text {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .nav-card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #f0f6fc;
+            margin-bottom: 3px;
+        }
+
+        .nav-card-desc {
+            font-size: 13px;
+            color: #8b949e;
+            line-height: 1.4;
+        }
+
+        .nav-arrow {
+            color: #484f58;
+            flex-shrink: 0;
+            transition: color 0.2s, transform 0.2s;
+        }
+        .nav-card:hover .nav-arrow {
+            color: #8b949e;
+            transform: translateX(2px);
+        }
+
+        /* User details card */
+        .details-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 32px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #21262d;
+        }
+        .detail-row:last-child { border-bottom: none; }
+
+        .detail-label {
+            font-size: 13px;
+            color: #8b949e;
+        }
+
+        .detail-value {
+            font-size: 14px;
+            color: #c9d1d9;
+            text-align: right;
+            word-break: break-all;
+        }
+
+        /* Guest state */
+        .guest-container {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .guest-container h1 {
+            font-size: 32px;
+            font-weight: 700;
+            color: #f0f6fc;
+            margin-bottom: 8px;
+        }
+
+        .guest-subtitle {
+            font-size: 16px;
+            color: #8b949e;
+            margin-bottom: 36px;
+        }
+
+        .login-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 28px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .login-btn:hover { background: #2ea043; }
+        .login-btn svg { width: 18px; height: 18px; }
+
+        .public-links {
+            margin-top: 40px;
+        }
+
+        /* Raw session toggle */
+        .raw-toggle {
+            margin-top: 0;
+        }
+
+        .raw-toggle summary {
+            font-size: 13px;
+            color: #8b949e;
+            cursor: pointer;
+            user-select: none;
+            padding: 4px 0;
+        }
+        .raw-toggle summary:hover { color: #c9d1d9; }
+
+        .raw-content {
+            margin-top: 8px;
+            padding: 16px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            color: #c9d1d9;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+    </style>
 </head>
 <body>
+
+<div class="page">
     {% if session %}
-        <h1>Welcome, {{ session['userinfo']['name'] }}!</h1>
-        <pre>{{ pretty }}</pre>
-        <a href="/logout">Logout</a>
-        <br /><br />
-        
-        <button onclick="window.location.href='/ynab/homepage'">Go to Mobilbanken</button>
-        
-        <button onclick="window.location.href='/adnepos'">Transcribe Image</button>
-        
+
+    <!-- Logged-in state -->
+    <div class="top-bar">
+        <div class="profile-header">
+            {% if session.userinfo.picture %}
+                <img class="avatar" src="{{ session.userinfo.picture }}" alt="Avatar">
+            {% else %}
+                <div class="avatar-placeholder">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                </div>
+            {% endif %}
+            <div class="profile-text">
+                <h1>{{ session.userinfo.name }}</h1>
+                {% if session.userinfo.email %}
+                    <div class="email">{{ session.userinfo.email }}</div>
+                {% endif %}
+            </div>
+        </div>
+        <a href="/logout" class="logout-btn">Sign out</a>
+    </div>
+
+    <!-- Services -->
+    <div class="section-label">Services</div>
+    <div class="nav-cards">
+        <a href="/ynab/homepage" class="nav-card">
+            <div class="nav-icon green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="1" x2="12" y2="23"/>
+                    <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+                </svg>
+            </div>
+            <div class="nav-card-text">
+                <div class="nav-card-title">YNAB Export</div>
+                <div class="nav-card-desc">Upload Mobilbanken CSV and sync transactions to YNAB</div>
+            </div>
+            <svg class="nav-arrow" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/></svg>
+        </a>
+
+        <a href="/adnepos" class="nav-card">
+            <div class="nav-icon blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <div class="nav-card-text">
+                <div class="nav-card-title">Transcribe Image</div>
+                <div class="nav-card-desc">OCR transcription powered by Google Gemini AI</div>
+            </div>
+            <svg class="nav-arrow" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/></svg>
+        </a>
+
+        <a href="/cv" class="nav-card">
+            <div class="nav-icon purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/>
+                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                </svg>
+            </div>
+            <div class="nav-card-text">
+                <div class="nav-card-title">CV / Portfolio</div>
+                <div class="nav-card-desc">Interactive resume with a Rust/WebAssembly game</div>
+            </div>
+            <svg class="nav-arrow" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/></svg>
+        </a>
+    </div>
+
+    <!-- Account details -->
+    <div class="section-label">Account</div>
+    <div class="details-card">
+        {% if session.userinfo.nickname %}
+        <div class="detail-row">
+            <span class="detail-label">Username</span>
+            <span class="detail-value">{{ session.userinfo.nickname }}</span>
+        </div>
+        {% endif %}
+        {% if session.userinfo.email %}
+        <div class="detail-row">
+            <span class="detail-label">Email</span>
+            <span class="detail-value">{{ session.userinfo.email }}</span>
+        </div>
+        {% endif %}
+        {% if session.userinfo.sub %}
+        <div class="detail-row">
+            <span class="detail-label">User ID</span>
+            <span class="detail-value">{{ session.userinfo.sub }}</span>
+        </div>
+        {% endif %}
+        {% if session.userinfo.email_verified is not none %}
+        <div class="detail-row">
+            <span class="detail-label">Email verified</span>
+            <span class="detail-value">
+                {% if session.userinfo.email_verified %}
+                    <span style="color:#3fb950;">Yes</span>
+                {% else %}
+                    <span style="color:#f85149;">No</span>
+                {% endif %}
+            </span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Raw session data -->
+    <details class="raw-toggle">
+        <summary>View raw session data</summary>
+        <div class="raw-content">{{ pretty }}</div>
+    </details>
+
     {% else %}
-        <h1>Welcome, Guest!</h1>
-        <a href="/login">Login</a>
+
+    <!-- Guest state -->
+    <div class="guest-container">
+        <h1>Johannes</h1>
+        <p class="guest-subtitle">Sign in to access your services and tools.</p>
+
+        <a href="/login" class="login-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/>
+                <polyline points="10 17 15 12 10 7"/>
+                <line x1="15" y1="12" x2="3" y2="12"/>
+            </svg>
+            Sign in
+        </a>
+
+        <div class="public-links">
+            <div class="section-label" style="margin-top:40px;">Public</div>
+            <div class="nav-cards">
+                <a href="/cv" class="nav-card">
+                    <div class="nav-icon purple">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/>
+                            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                        </svg>
+                    </div>
+                    <div class="nav-card-text">
+                        <div class="nav-card-title">CV / Portfolio</div>
+                        <div class="nav-card-desc">Interactive resume with a Rust/WebAssembly game</div>
+                    </div>
+                    <svg class="nav-arrow" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/></svg>
+                </a>
+            </div>
+        </div>
+    </div>
+
     {% endif %}
+</div>
+
 </body>
 </html>
