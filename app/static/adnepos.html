@@ -3,165 +3,860 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Archive Digitizer</title>
+    <title>Transcribe Images</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f0f2f5; }
-        header { background: #2c3e50; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
-        .workspace { display: flex; flex: 1; overflow: hidden; }
-        
-        /* Gallery & Preview */
-        .image-pane { flex: 1.2; display: flex; flex-direction: column; border-right: 2px solid #ddd; background: #e9ecef; }
-        .gallery-bar { height: 120px; background: #dfe4ea; display: flex; gap: 10px; padding: 10px; overflow-x: auto; border-bottom: 1px solid #ccc; }
-        .thumbnail { height: 100px; width: 80px; object-fit: cover; cursor: pointer; border-radius: 4px; border: 3px solid transparent; background: white; flex-shrink: 0; transition: 0.2s; }
-        .thumbnail.active { border-color: #007bff; transform: scale(0.95); }
-        .main-preview { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 20px; }
-        #doc-image { max-width: 100%; height: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-radius: 4px; display: none; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        /* Controls */
-        .toolbar { background: #fff; padding: 10px 20px; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; }
-        .editor-pane { flex: 1; display: flex; flex-direction: column; padding: 20px; background: white; }
-        textarea { flex: 1; width: 100%; padding: 15px; font-size: 16px; font-family: 'Courier New', monospace; border: 1px solid #ccc; border-radius: 4px; resize: none; }
-        
-        button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 6px; font-weight: 600; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-upload { background: #28a745; color: white; }
-        .loading { display: none; margin-left: 10px; color: #555; font-size: 0.9rem; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 16px;
+        }
+
+        .page {
+            width: 100%;
+            max-width: 640px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #8b949e;
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 32px;
+            transition: color 0.2s;
+        }
+        .back-link:hover { color: #e1e4e8; }
+        .back-link svg { width: 16px; height: 16px; }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #f0f6fc;
+        }
+
+        .subtitle {
+            color: #8b949e;
+            font-size: 15px;
+            margin-bottom: 32px;
+        }
+
+        /* Upload card */
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 20px;
+        }
+
+        .drop-zone {
+            border: 2px dashed #30363d;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            position: relative;
+        }
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: #58a6ff;
+            background: rgba(88, 166, 255, 0.04);
+        }
+
+        .drop-zone svg {
+            width: 40px;
+            height: 40px;
+            color: #484f58;
+            margin-bottom: 12px;
+        }
+
+        .drop-zone p {
+            color: #8b949e;
+            font-size: 14px;
+        }
+        .drop-zone p span {
+            color: #58a6ff;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .drop-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* File list */
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .file-item svg {
+            width: 18px;
+            height: 18px;
+            color: #58a6ff;
+            flex-shrink: 0;
+        }
+
+        .file-item .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #c9d1d9;
+        }
+
+        .file-item .file-size {
+            color: #8b949e;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .file-item .remove-btn {
+            background: none;
+            border: none;
+            color: #8b949e;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            font-size: 18px;
+            transition: color 0.2s;
+        }
+        .file-item .remove-btn:hover { color: #f85149; }
+
+        .file-item .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .file-item .status-dot.pending { background: #484f58; }
+        .file-item .status-dot.uploading { background: #d29922; }
+        .file-item .status-dot.done { background: #3fb950; }
+        .file-item .status-dot.error { background: #f85149; }
+
+        .transcribe-btn {
+            width: 100%;
+            padding: 14px;
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .transcribe-btn:hover { background: #2ea043; }
+        .transcribe-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+        .progress-container.visible { display: block; }
+
+        .progress-label {
+            font-size: 13px;
+            color: #8b949e;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar-bg {
+            height: 6px;
+            background: #21262d;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #58a6ff;
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        /* Status messages */
+        .status-banner {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+        .status-banner.visible { display: flex; }
+        .status-banner svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+        .status-banner.success {
+            background: rgba(35, 134, 54, 0.15);
+            border: 1px solid #238636;
+            color: #3fb950;
+        }
+        .status-banner.error {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid #f8514973;
+            color: #f85149;
+        }
+
+        /* Section label */
+        .section-label {
+            font-size: 12px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+
+        /* Results */
+        .results-section {
+            display: none;
+            margin-top: 12px;
+        }
+        .results-section.visible { display: block; }
+
+        .result-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .result-filename {
+            font-size: 14px;
+            font-weight: 600;
+            color: #f0f6fc;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .result-badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+        .result-badge.ok {
+            background: rgba(35, 134, 54, 0.2);
+            color: #3fb950;
+        }
+        .result-badge.fail {
+            background: rgba(248, 81, 73, 0.15);
+            color: #f85149;
+        }
+
+        .result-body {
+            padding: 20px;
+        }
+
+        .result-text {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Metadata */
+        .result-metadata {
+            margin-top: 12px;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .meta-item {
+            background: #0d1117;
+            border-radius: 6px;
+            padding: 10px 12px;
+        }
+
+        .meta-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #f0f6fc;
+            margin-bottom: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .meta-label {
+            font-size: 11px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        /* Action buttons */
+        .result-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: none;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #8b949e;
+            font-size: 13px;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s, background 0.2s;
+        }
+        .action-btn:hover {
+            color: #f0f6fc;
+            border-color: #8b949e;
+            background: #21262d;
+        }
+        .action-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+        .action-btn.copied {
+            color: #3fb950;
+            border-color: #238636;
+        }
+
+        /* Spinner */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #484f58;
+            border-top-color: #58a6ff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
 
-<div class="toolbar">
-    <input type="file" id="fileInput" hidden accept="image/*" multiple>
-    <button class="btn-upload" onclick="document.getElementById('fileInput').click()">📁 Step 1: Upload Images</button>
-    <button class="btn-primary" onclick="runTranscribe()">✨ Step 2: Transcribe Selected</button>
-    <span id="loader" class="loading">Please wait...</span>
-</div>
+<div class="page">
+    <a href="/" class="back-link">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 12.53a.75.75 0 01-1.06 0L2.47 8.28a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L4.81 7h7.44a.75.75 0 010 1.5H4.81l2.97 2.97a.75.75 0 010 1.06z"/></svg>
+        Back to Home
+    </a>
 
-<div class="workspace">
-    <div class="image-pane">
-        <div class="gallery-bar" id="gallery"></div>
-        <div class="main-preview">
-            <div id="placeholder" style="color:#666; margin-top:100px;">Upload images to start</div>
-            <img id="doc-image" src="">
+    <h1>Transcribe Images</h1>
+    <p class="subtitle">Upload images and transcribe them using Google Gemini AI.</p>
+
+    <div class="card">
+        <div class="drop-zone" id="dropZone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p>Drag & drop images here, or <span>browse</span></p>
+            <input type="file" id="fileInput" accept="image/*" multiple />
+        </div>
+
+        <div class="file-list" id="fileList"></div>
+
+        <button class="transcribe-btn" id="transcribeBtn" disabled onclick="handleTranscribe()">
+            Transcribe All
+        </button>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-label" id="progressLabel">Uploading files...</div>
+            <div class="progress-bar-bg">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </div>
+
+        <div class="status-banner" id="statusBanner">
+            <svg id="statusIcon" viewBox="0 0 16 16" fill="currentColor"></svg>
+            <span id="statusText"></span>
         </div>
     </div>
 
-    <div class="editor-pane">
-        <textarea id="editor" placeholder="Transcription result will appear here..."></textarea>
+    <div class="results-section" id="resultsSection">
+        <div class="section-label">Transcription Results</div>
+        <div id="resultsContainer"></div>
     </div>
 </div>
 
 <script>
-    const fileInput = document.getElementById('fileInput');
-    const gallery = document.getElementById('gallery');
-    const docImage = document.getElementById('doc-image');
-    const placeholder = document.getElementById('placeholder');
-    const loader = document.getElementById('loader');
-    const editor = document.getElementById('editor');
+    // --- State ---
+    // Each entry: { file: File, serverFilename: null|string, status: 'pending'|'uploading'|'done'|'error' }
+    let fileEntries = [];
 
-    // --- UNIFIED ERROR HANDLER ---
-    async function handleResponse(response) {
-        const data = await response.json();
-        if (!response.ok) {
-            const errorMsg = data.detail || "Something went wrong";
-            alert(`Error: ${errorMsg}`);
-            throw new Error(errorMsg);
-        }
-        return data;
+    // --- DOM refs ---
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const fileListEl = document.getElementById('fileList');
+    const transcribeBtn = document.getElementById('transcribeBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressLabel = document.getElementById('progressLabel');
+    const progressBar = document.getElementById('progressBar');
+    const statusBanner = document.getElementById('statusBanner');
+    const statusIcon = document.getElementById('statusIcon');
+    const statusText = document.getElementById('statusText');
+    const resultsSection = document.getElementById('resultsSection');
+    const resultsContainer = document.getElementById('resultsContainer');
+
+    // --- Helpers ---
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
     }
 
-    // --- UPLOAD LOGIC ---
-    fileInput.addEventListener('change', async (e) => {
-        const files = Array.from(e.target.files);
-        loader.style.display = 'inline';
-        loader.innerText = "Uploading...";
+    function resetStatus() {
+        statusBanner.classList.remove('visible', 'success', 'error');
+        progressContainer.classList.remove('visible');
+        progressBar.style.width = '0%';
+        progressBar.style.background = '#58a6ff';
+    }
 
-        for (const file of files) {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch('/upload', { method: 'POST', body: formData });
-                const result = await handleResponse(response);
-                
-                // Add to gallery using the filename returned by the backend
-                addThumbnailToGallery(file, result.filename);
-            } catch (err) { console.error(err); }
+    function showStatus(type, message) {
+        statusBanner.className = 'status-banner visible ' + type;
+        if (type === 'success') {
+            statusIcon.innerHTML = '<path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>';
+        } else {
+            statusIcon.innerHTML = '<path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>';
         }
-        loader.style.display = 'none';
+        statusText.textContent = message;
+    }
+
+    function setProgress(pct, label) {
+        progressContainer.classList.add('visible');
+        progressBar.style.width = pct + '%';
+        if (label) progressLabel.textContent = label;
+    }
+
+    // --- File list rendering ---
+    function renderFileList() {
+        fileListEl.innerHTML = '';
+        transcribeBtn.disabled = fileEntries.length === 0;
+        if (fileEntries.length > 0) {
+            transcribeBtn.textContent = fileEntries.length === 1
+                ? 'Transcribe Image'
+                : `Transcribe All (${fileEntries.length})`;
+        }
+
+        fileEntries.forEach((entry, idx) => {
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.innerHTML = `
+                <span class="status-dot ${entry.status}"></span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span class="file-name">${entry.file.name}</span>
+                <span class="file-size">${formatBytes(entry.file.size)}</span>
+                <button class="remove-btn" title="Remove file" data-idx="${idx}">&times;</button>
+            `;
+            fileListEl.appendChild(div);
+        });
+
+        // Bind remove buttons
+        fileListEl.querySelectorAll('.remove-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                fileEntries.splice(idx, 1);
+                renderFileList();
+            });
+        });
+    }
+
+    function addFiles(files) {
+        for (const file of files) {
+            // Skip duplicates by name
+            if (fileEntries.some(e => e.file.name === file.name && e.file.size === file.size)) continue;
+            fileEntries.push({ file, serverFilename: null, status: 'pending' });
+        }
+        renderFileList();
+        resetStatus();
+    }
+
+    // --- File input events ---
+    fileInput.addEventListener('change', () => {
+        addFiles(fileInput.files);
+        fileInput.value = '';
     });
 
-    function addThumbnailToGallery(file, filename) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = document.createElement('img');
-            img.src = e.target.result;
-            img.classList.add('thumbnail');
-            img.dataset.filename = filename; // Store the backend filename here
-            
-            img.onclick = () => {
-                document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
-                img.classList.add('active');
-                docImage.src = img.src;
-                docImage.style.display = 'block';
-                placeholder.style.display = 'none';
-            };
-            gallery.appendChild(img);
-            if (gallery.children.length === 1) img.click();
-        };
-        reader.readAsDataURL(file);
+    // --- Drag & drop ---
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            addFiles(e.dataTransfer.files);
+        }
+    });
+
+    // --- Upload & Transcribe ---
+    async function handleTranscribe() {
+        if (fileEntries.length === 0) return;
+
+        resetStatus();
+        transcribeBtn.disabled = true;
+        resultsSection.classList.remove('visible');
+        resultsContainer.innerHTML = '';
+
+        const total = fileEntries.length;
+        let completed = 0;
+        let errors = 0;
+        const results = [];
+
+        // Step 1: Upload all files
+        setProgress(0, `Uploading files (0/${total})...`);
+
+        for (let i = 0; i < fileEntries.length; i++) {
+            const entry = fileEntries[i];
+
+            // Skip if already uploaded
+            if (entry.serverFilename) {
+                completed++;
+                setProgress((completed / total) * 40, `Uploading files (${completed}/${total})...`);
+                continue;
+            }
+
+            entry.status = 'uploading';
+            renderFileList();
+
+            try {
+                const formData = new FormData();
+                formData.append('file', entry.file);
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (!res.ok || (data.status_code && data.status_code !== 200)) {
+                    throw new Error(data.detail || data.message || 'Upload failed');
+                }
+
+                entry.serverFilename = data.filename;
+                entry.status = 'done';
+            } catch (err) {
+                entry.status = 'error';
+                errors++;
+                results.push({ filename: entry.file.name, error: err.message });
+            }
+
+            completed++;
+            setProgress((completed / total) * 40, `Uploading files (${completed}/${total})...`);
+            renderFileList();
+        }
+
+        // Step 2: Transcribe all uploaded files in one batch request
+        const uploadedEntries = fileEntries.filter(e => e.serverFilename);
+        const allFilenames = uploadedEntries.map(e => e.serverFilename);
+
+        setProgress(50, `Transcribing ${allFilenames.length} image${allFilenames.length > 1 ? 's' : ''}...`);
+
+        try {
+            // Single batch payload: POST /adnepos/transcribe
+            // Body: { "filenames": ["file1.jpg", "file2.jpg", "file3.jpg"] }
+            const res = await fetch('/adnepos/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filenames: allFilenames })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.detail || 'Transcription failed');
+            }
+
+            // Expected response: { "results": [ { "filename": "...", "transcription": "...", "metadata": {...} }, ... ] }
+            if (Array.isArray(data.results)) {
+                for (let i = 0; i < data.results.length; i++) {
+                    const r = data.results[i];
+                    const displayName = uploadedEntries[i] ? uploadedEntries[i].file.name : (r.filename || `Image ${i + 1}`);
+                    if (r.error) {
+                        results.push({ filename: displayName, error: r.error });
+                        errors++;
+                    } else {
+                        results.push({
+                            filename: displayName,
+                            transcription: r.transcription || '',
+                            metadata: r.metadata || null,
+                            error: null
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            // If the whole batch fails, mark all as errors
+            for (const entry of uploadedEntries) {
+                results.push({ filename: entry.file.name, error: err.message });
+            }
+            errors = uploadedEntries.length;
+        }
+
+        setProgress(100, 'Done');
+
+        const successCount = results.filter(r => !r.error).length;
+        if (errors === 0) {
+            showStatus('success', `Successfully transcribed ${successCount} image${successCount > 1 ? 's' : ''}.`);
+        } else if (successCount > 0) {
+            showStatus('error', `Completed with ${errors} error${errors > 1 ? 's' : ''} out of ${total} files.`);
+        } else {
+            showStatus('error', 'All transcriptions failed.');
+        }
+
+        // Render results
+        renderResults(results);
+        transcribeBtn.disabled = false;
     }
 
-    // --- TRANSCRIBE LOGIC ---
-    async function runTranscribe() {
-      const activeThumb = document.querySelector('.thumbnail.active');
-      if (!activeThumb) return alert("Select an image first!");
+    // --- Render results ---
+    function renderResults(results) {
+        resultsContainer.innerHTML = '';
+        const successResults = results.filter(r => !r.error);
 
-      const filename = activeThumb.dataset.filename;
-      const loader = document.getElementById('loader');
-      const editor = document.getElementById('editor');
+        if (successResults.length === 0 && results.length > 0) {
+            // Only errors
+            for (const r of results) {
+                resultsContainer.appendChild(createResultCard(r));
+            }
+            resultsSection.classList.add('visible');
+            return;
+        }
 
-      loader.style.display = 'inline';
-      loader.innerText = "Processing Transcribe...";
+        for (const r of results) {
+            resultsContainer.appendChild(createResultCard(r));
+        }
+        resultsSection.classList.add('visible');
+    }
 
-      try {
-          const response = await fetch('/adnepos/transcribe', {
-              // Updated to ensure we're hitting your actual endpoint
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filenames: [filename] }) 
-          });
+    function createResultCard(result) {
+        const card = document.createElement('div');
+        card.className = 'result-card';
 
-          // handleResponse parses the JSON for us
-          const result = await handleResponse(response);
+        const isError = !!result.error;
+        const text = isError ? result.error : (result.transcription || 'No text found.');
 
-          // 1. Build the display string
-          // We use result.transcription (matching your Pydantic/Gemini schema)
-          let displayContent = `--- TRANSCRIPTION ---\n`;
-          displayContent += result.transcription || "No text found.";
-          displayContent += `\n\n--- METADATA ---\n`;
+        // Header
+        let headerHTML = `
+            <div class="result-header">
+                <span class="result-filename">${result.filename}</span>
+                <span class="result-badge ${isError ? 'fail' : 'ok'}">${isError ? 'Failed' : 'Done'}</span>
+            </div>
+        `;
 
-          // 2. Format Metadata
-          if (result.metadata && typeof result.metadata === 'object') {
-              // This loops through the metadata object and prints key-value pairs
-              const metaLines = Object.entries(result.metadata)
-                  .map(([key, value]) => `${key.toUpperCase()}: ${value}`)
-                  .join('\n');
-              displayContent += metaLines || "No metadata extracted.";
-          } else {
-              displayContent += "No metadata available.";
-          }
+        // Body
+        let bodyHTML = `<div class="result-body">`;
+        bodyHTML += `<div class="result-text">${escapeHtml(text)}</div>`;
 
-          // 3. Update the UI
-          editor.value = displayContent;
+        // Metadata
+        if (!isError && result.metadata && typeof result.metadata === 'object') {
+            const entries = Object.entries(result.metadata);
+            if (entries.length > 0) {
+                bodyHTML += `<div class="result-metadata"><div class="meta-grid">`;
+                for (const [key, value] of entries) {
+                    bodyHTML += `
+                        <div class="meta-item">
+                            <div class="meta-value">${escapeHtml(String(value))}</div>
+                            <div class="meta-label">${escapeHtml(key.replace(/_/g, ' '))}</div>
+                        </div>
+                    `;
+                }
+                bodyHTML += `</div></div>`;
+            }
+        }
 
-      } catch (err) {
-          console.error("Transcription failed:", err);
-          // Error is already alerted in handleResponse
-      } finally {
-          loader.style.display = 'none';
-      }
-  }
+        // Actions
+        if (!isError) {
+            const id = 'res-' + Math.random().toString(36).slice(2, 9);
+            bodyHTML += `
+                <div class="result-actions">
+                    <button class="action-btn" onclick="copyText(this, '${id}')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                        </svg>
+                        Copy
+                    </button>
+                    <button class="action-btn" onclick="exportPDF('${id}', '${escapeAttr(result.filename)}')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                        </svg>
+                        Export PDF
+                    </button>
+                    <button class="action-btn" onclick="exportWord('${id}', '${escapeAttr(result.filename)}')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="12" y1="18" x2="12" y2="12"/>
+                            <line x1="9" y1="15" x2="15" y2="15"/>
+                        </svg>
+                        Export Word
+                    </button>
+                </div>
+            `;
+            // Store text in a hidden element for export
+            bodyHTML += `<textarea id="${id}" style="display:none;">${escapeHtml(text)}</textarea>`;
+        }
+
+        bodyHTML += `</div>`;
+
+        card.innerHTML = headerHTML + bodyHTML;
+        return card;
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+        return str.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
+
+    // --- Copy ---
+    function copyText(btn, id) {
+        const textarea = document.getElementById(id);
+        if (!textarea) return;
+        navigator.clipboard.writeText(textarea.value).then(() => {
+            btn.classList.add('copied');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = `
+                <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                    <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+                </svg>
+                Copied
+            `;
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.innerHTML = originalHTML;
+            }, 2000);
+        });
+    }
+
+    // --- Export PDF ---
+    function exportPDF(id, filename) {
+        const textarea = document.getElementById(id);
+        if (!textarea) return;
+        const text = textarea.value;
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        const baseName = filename.replace(/\.[^/.]+$/, '');
+        doc.setFontSize(11);
+        doc.setFont('helvetica');
+
+        const lines = doc.splitTextToSize(text, 180);
+        let y = 15;
+        const pageHeight = doc.internal.pageSize.height;
+
+        for (const line of lines) {
+            if (y > pageHeight - 15) {
+                doc.addPage();
+                y = 15;
+            }
+            doc.text(line, 15, y);
+            y += 6;
+        }
+
+        doc.save(baseName + '_transcription.pdf');
+    }
+
+    // --- Export Word ---
+    function exportWord(id, filename) {
+        const textarea = document.getElementById(id);
+        if (!textarea) return;
+        const text = textarea.value;
+        const baseName = filename.replace(/\.[^/.]+$/, '');
+
+        const html = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office"
+                  xmlns:w="urn:schemas-microsoft-com:office:word"
+                  xmlns="http://www.w3.org/TR/REC-html40">
+            <head><meta charset="utf-8"><title>${baseName}</title></head>
+            <body style="font-family: Calibri, sans-serif; font-size: 11pt; line-height: 1.6;">
+                <h2>${escapeHtml(baseName)}</h2>
+                <p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>
+            </body>
+            </html>
+        `;
+
+        const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = baseName + '_transcription.doc';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
 </script>
+
 </body>
 </html>
