@@ -462,38 +462,42 @@ async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validat
 
 @app.post("/adnepos/transcribe")
 async def transcribe_image(transcribe_request: TranscribeRequest,  user: User = Depends(get_user_and_validate_session)):
+    MAX_FILES = 20
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
-    logger.info(f"Checking {transcribe_request=}")
-    try: 
-        images = [os.path.join(UPLOAD_DIR,image_filename) for image_filename in transcribe_request.filenames]
-    except HTTPException as e:
-        raise HTTPException(
-            status_code= 400,
-            detail="Image not found.",
-        )
+
+    if not transcribe_request.filenames:
+        raise HTTPException(status_code=400, detail="No filenames provided.")
+
+    for filename in transcribe_request.filenames:
+        if ".." in filename or filename.startswith("/"):
+            raise HTTPException(status_code=400, detail=f"Invalid filename: {filename}")
+
+    if len(transcribe_request.filenames) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Too many files. Maximum {MAX_FILES} allowed.")
+
 
     
-    try: 
-        image_bytes = await asyncio.gather(*[HandleFiles.read_file(file_path=image_path, mode='rb') for image_path in images])
-    except IOError as e: 
-        logger.info(f"Failed to read file")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed reading file"
-        )
+    images = []
+    for filename in transcribe_request.filenames:
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail=f"File not found: {filename}")
 
-    ## need to add support for multiple images here 
-    logger.info(f"Checking image: {image_bytes[0]}")
-    result = await transcriber_instance.process_image(image_bytes[0])
-
-    logger.info(f"Transcribed text: {result}")
-    logger.info(f"Type of result: {type(result)}")
-    #transactions = images[0]
+        if os.path.getsize(file_path) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail=f"File too large: {filename}")
+        images.append((file_path, filename))
     
-    logger.info(f"result dict : {result.dict()}")
-    
+    coroutines = []
+    for image_path, image_filename in images:
+        image_bytes = await HandleFiles.read_file(file_path=image_path, mode='rb')
+        transcribe_result = transcriber_instance.process_image(image_bytes, image_filename)
+        coroutines.append(transcribe_result)
 
-    return result.dict()
+    result = await asyncio.gather(*coroutines)
+
+
+    return {"results": result} 
 
 
     

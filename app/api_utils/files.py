@@ -4,6 +4,7 @@ import pyarrow as pa
 import duckdb 
 import logging
 import os 
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,8 @@ class HandleFiles:
     async def read_file(file_path:str,mode: str): 
     
         try:
-            with open(file=file_path,mode=mode) as f:
-                file = f.read()
+            async with aiofiles.open(file_path,mode) as f:
+                file = await f.read()
         except FileNotFoundError:
             raise HTTPException(
                 status_code=404,
