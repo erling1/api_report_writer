@@ -38,8 +38,15 @@ class HandleFiles:
         For reading csv files and return a arrow table
         """
         logger.info(f"Reading Mobilbanken CSV file: {os.path.basename(file_path)}")
+        
+        try: 
+            df = pd.read_csv(file_path, delimiter=';',encoding='unicode_escape')
+        except (TypeError, FileNotFoundError, UnicodeDecodeError, MemoryError) as e: 
+            raise  HTTPException(
+                status_code=500,
+                detail=f"Failed reading Mobilbanken CSV file from path: {file_path}, Exception: {e}")
 
-        df = pd.read_csv(file_path, delimiter=';',encoding='unicode_escape')
+
 
         logger.info(f"Converting to arrow table")
 

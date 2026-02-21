@@ -192,7 +192,6 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
     logger.info(f"Global Error Handler: {exc.status_code=}, {exc.detail=} ")
 
-
     if exc.status_code == 401: 
         return RedirectResponse(url="/login")
 
@@ -207,9 +206,6 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
-
-
-
 async def get_user_and_validate_session(request: Request):
     
     user = request.session.get("user")
@@ -222,8 +218,6 @@ async def get_user_and_validate_session(request: Request):
         )
 
     token = user.get("access_token")
-    
-    logger.info(f"{token=}")
     
     id_token = user.get("id_token")
 
@@ -254,12 +248,6 @@ async def get_user_and_validate_session(request: Request):
 }
     header = jwt.get_unverified_header(token)
     algo = header.get("alg")
-    logger.info(f"issuer: {ISSUER}") 
-
-    logger.info(f" audience from env: {AUTH0_AUDIENCE}")
-    logger.info(f"audience from token: {header.items()}")
-
-
 
     try: 
 
@@ -284,35 +272,8 @@ async def get_user_and_validate_session(request: Request):
         
 
 
-#I want one more way to access my api, mostly to practice setting up endpoints using various secure methods
 
-def generate_master_key_remote_api_call():
-
-    master_key = Fernet.generate_key()
-
-    from dotenv import set_key
-    set_key(".env", "master_key", master_key)
-
-
-def generate_token_remote_api_call(username:str, expire_delta: int):
-
-    master_key = os.getenv('master_key')
-
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expire_delta)
-
-    payload = {
-        'user': username,
-        'expire': expire.timestamp()
-    }
-    
-
-    payload_bytes = json.dumps(payload).encode('utf-8')
-
-    encrypted_token = Fernet(master_key).encrypt(payload_bytes)
-
-    return encrypted_token
-
-
+#this might be useful still 
 async def get_token_from_cookie(request: Request) -> str:
     """Retrieves the access token from the cookie."""
     access_token = request.cookies.get("access_token")
@@ -323,25 +284,6 @@ async def get_token_from_cookie(request: Request) -> str:
             headers={"WWW-Authenticate": "Bearer"},
         )
     return access_token
-
-
-
-async def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-
-    to_encode = data.copy()
-
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-
-    to_encode.update({"exp": expire})
-
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY_JWT, algorithm=ALGORITHM)
-
-    logger.info(f"Successfully created JWT for user: {data.get('sub')}")
-
-    return encoded_jwt
 
 
 #this needs some work 
@@ -366,68 +308,7 @@ async def get_current_active_user(current_user: User = Depends(get_user_and_vali
 
 
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    user = request.session.get("user")
-    
-    pretty_user = json.dumps(user, indent=4) if user else None
-    
-    return templates.TemplateResponse(
-        "home.html", 
-        {
-            "request": request, 
-            "session": user, 
-            "pretty": pretty_user
-        }
-    )
 
-@app.get("/ynab/homepage")
-async def get_ynab_homepage():
-    return FileResponse("static/ynab.html")
-
-@app.get("/adnepos")
-async def adnepos(user: User = Depends(get_user_and_validate_session)):
-    return FileResponse("static/adnepos.html")
-
-@app.get("/cv")
-async def cv():
-    return FileResponse("static/cv.html")
-
-@app.get("/cv/game")
-async def cv():
-    return FileResponse("static/rust/cv_game/index.html")
-
-@app.get("/cv_game_redirect")
-def redirect_me():
-    return RedirectResponse(url="/cv")
-
-
-
-
-
-@app.get("/login")
-async def login(request: Request):
-    redirect_uri = request.url_for("callback")
-    return await oauth.auth0.authorize_redirect(request, redirect_uri)
-
-@app.get("/callback")
-async def callback(request: Request):
-    token = await oauth.auth0.authorize_access_token(request)
-    request.session["user"] = token
-    return RedirectResponse(url="/")
-
-
-@app.get("/logout")
-async def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse(url="/")
-
-@app.get("/test")
-async def test_api(user: User = Depends(get_user_and_validate_session)):
-    
-    logger.info(f"Checking User: {user}")
-
-    return user
 
 
 
@@ -500,27 +381,13 @@ async def transcribe_image(transcribe_request: TranscribeRequest,  user: User = 
     return {"results": result} 
 
 
-    
-
-
-
 @app.post("/ynab/export")
 async def export_ynab(export_request: FileObject, user: User = Depends(get_user_and_validate_session)):
-    
-    logger.info(f"{export_request=}")
-
 
     file_path = os.path.join(UPLOAD_DIR, export_request.filename)
 
+    arrow = await HandleFiles.read_csv(file_path)
 
-    logger.info(f"{file_path=}")
-    try:
-        arrow = await HandleFiles.read_csv(file_path)
-    except Exception as e: 
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed reading Mobilbanken CSV file from path: {file_path}, Exception: {e}")
-    ## this needs to be secret 
     accounts = [SPAREKONTO_18_23_ACCOUNT_NR, CHECKING_ACCOUNT_NR,BSU_ACCOUNT_NR ]
 
     metadata = {}
@@ -528,9 +395,7 @@ async def export_ynab(export_request: FileObject, user: User = Depends(get_user_
     for account in accounts: 
         
         transaction_table, metadata = await filter_mobilebanken_transactions(arrow=arrow,from_account=account,to_account=account)
-        logger.info(f"{transaction_table=}")
         transactions = await ynab_instance.create_transactions(transaction_table)
-        logger.info(f"{transactions=}")
         api_response = await ynab_instance.import_transactions(transactions)
         metadata[account] = api_response
 
@@ -542,27 +407,70 @@ async def export_ynab(export_request: FileObject, user: User = Depends(get_user_
         
 
 
-        
-    
-
-
-
-
-
-
-
-
-
 @app.get("/users/me")
 async def read_users_me(current_user: User = Depends(get_user_and_validate_session)):
     return current_user
 
 
-@app.get("/items/{item_id}")
-async def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q}
 
 
 
 
 
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    user = request.session.get("user")
+    
+    pretty_user = json.dumps(user, indent=4) if user else None
+    
+    return templates.TemplateResponse(
+        "home.html", 
+        {
+            "request": request, 
+            "session": user, 
+            "pretty": pretty_user
+        }
+    )
+
+@app.get("/ynab/homepage")
+async def get_ynab_homepage():
+    return FileResponse("static/ynab.html")
+
+@app.get("/adnepos")
+async def adnepos(user: User = Depends(get_user_and_validate_session)):
+    return FileResponse("static/adnepos.html")
+
+@app.get("/cv")
+async def cv():
+    return FileResponse("static/cv.html")
+
+@app.get("/cv/game")
+async def cv():
+    return FileResponse("static/rust/cv_game/index.html")
+
+@app.get("/cv_game_redirect")
+def redirect_me():
+    return RedirectResponse(url="/cv")
+
+@app.get("/login")
+async def login(request: Request):
+    redirect_uri = request.url_for("callback")
+    return await oauth.auth0.authorize_redirect(request, redirect_uri)
+
+@app.get("/callback")
+async def callback(request: Request):
+    token = await oauth.auth0.authorize_access_token(request)
+    request.session["user"] = token
+    return RedirectResponse(url="/")
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/")
+
+@app.get("/test")
+async def test_api(user: User = Depends(get_user_and_validate_session)):
+    
+    logger.info(f"Checking User: {user}")
+
+    return user
