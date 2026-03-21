@@ -389,6 +389,10 @@ async def get_ynab_homepage():
 async def adnepos(user: User = Depends(get_user_and_validate_session)):
     return FileResponse("static/adnepos.html")
 
+@app.get("/report")
+async def report(user: User = Depends(get_user_and_validate_session)):
+    return FileResponse("static/report.html")
+
 @app.get("/cv")
 async def cv():
     return FileResponse("static/cv.html")

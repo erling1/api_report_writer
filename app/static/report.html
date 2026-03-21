@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Writer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top bar */
+        .top-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            border-bottom: 1px solid #30363d;
+            background: #161b22;
+            flex-shrink: 0;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #8b949e;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s;
+            flex-shrink: 0;
+        }
+        .back-link:hover { color: #e1e4e8; }
+        .back-link svg { width: 16px; height: 16px; }
+
+        .top-bar h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #f0f6fc;
+            flex: 1;
+        }
+
+        /* Three-panel layout */
+        .panels {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Left sidebar - Outline */
+        .panel-outline {
+            width: 240px;
+            border-right: 1px solid #30363d;
+            background: #161b22;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .panel-header {
+            padding: 14px 16px;
+            font-size: 12px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            font-weight: 500;
+            border-bottom: 1px solid #21262d;
+            flex-shrink: 0;
+        }
+
+        .outline-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 0;
+        }
+
+        .outline-item {
+            display: block;
+            padding: 8px 16px;
+            font-size: 13px;
+            color: #8b949e;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+            text-decoration: none;
+        }
+        .outline-item:hover {
+            background: rgba(88, 166, 255, 0.06);
+            color: #c9d1d9;
+        }
+        .outline-item.active {
+            color: #58a6ff;
+            border-left-color: #58a6ff;
+            background: rgba(88, 166, 255, 0.08);
+        }
+        .outline-item.level-2 { padding-left: 32px; }
+        .outline-item.level-3 { padding-left: 48px; font-size: 12px; }
+
+        .outline-empty {
+            padding: 24px 16px;
+            color: #484f58;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        /* Center - Report viewer */
+        .panel-report {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .report-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            border-bottom: 1px solid #21262d;
+            background: #0f1117;
+            flex-shrink: 0;
+        }
+
+        .report-title-input {
+            flex: 1;
+            background: none;
+            border: 1px solid transparent;
+            color: #f0f6fc;
+            font-size: 15px;
+            font-weight: 600;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-family: inherit;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .report-title-input:hover {
+            border-color: #30363d;
+            background: #161b22;
+        }
+        .report-title-input:focus {
+            outline: none;
+            border-color: #58a6ff;
+            background: #161b22;
+        }
+        .report-title-input::placeholder { color: #484f58; }
+
+        .toolbar-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: none;
+            border: 1px solid #30363d;
+            color: #8b949e;
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: color 0.2s, border-color 0.2s;
+            white-space: nowrap;
+        }
+        .toolbar-btn:hover {
+            color: #f0f6fc;
+            border-color: #8b949e;
+        }
+        .toolbar-btn svg { width: 14px; height: 14px; }
+
+        .report-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px 32px;
+        }
+
+        .report-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #484f58;
+            text-align: center;
+            gap: 16px;
+        }
+        .report-empty svg { width: 48px; height: 48px; opacity: 0.5; }
+        .report-empty p { font-size: 14px; line-height: 1.5; max-width: 300px; }
+
+        /* Report rendered content */
+        .report-content section { margin-bottom: 24px; }
+        .report-content h1 { font-size: 24px; font-weight: 600; color: #f0f6fc; margin-bottom: 12px; }
+        .report-content h2 { font-size: 20px; font-weight: 600; color: #f0f6fc; margin-bottom: 10px; }
+        .report-content h3 { font-size: 16px; font-weight: 600; color: #f0f6fc; margin-bottom: 8px; }
+        .report-content p { font-size: 14px; line-height: 1.7; color: #c9d1d9; margin-bottom: 10px; }
+        .report-content ul, .report-content ol { padding-left: 20px; margin-bottom: 10px; }
+        .report-content li { font-size: 14px; line-height: 1.7; color: #c9d1d9; margin-bottom: 4px; }
+        .report-content strong { color: #f0f6fc; }
+
+        /* Right sidebar - Chat */
+        .panel-chat {
+            width: 360px;
+            border-left: 1px solid #30363d;
+            background: #161b22;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        /* File upload area */
+        .upload-zone {
+            padding: 12px 16px;
+            border-bottom: 1px solid #21262d;
+            flex-shrink: 0;
+        }
+
+        .upload-dropzone {
+            border: 2px dashed #30363d;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .upload-dropzone:hover, .upload-dropzone.dragover {
+            border-color: #58a6ff;
+            background: rgba(88, 166, 255, 0.04);
+        }
+        .upload-dropzone svg { width: 24px; height: 24px; color: #484f58; margin-bottom: 6px; }
+        .upload-dropzone p { font-size: 12px; color: #8b949e; }
+        .upload-dropzone p span { color: #58a6ff; }
+
+        .upload-input { display: none; }
+
+        .uploaded-files {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .uploaded-files:empty { margin-top: 0; }
+
+        .uploaded-file {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #21262d;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #c9d1d9;
+        }
+        .uploaded-file svg { width: 14px; height: 14px; color: #8b949e; flex-shrink: 0; }
+        .uploaded-file .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .uploaded-file .remove-file {
+            background: none;
+            border: none;
+            color: #484f58;
+            cursor: pointer;
+            padding: 2px;
+            display: flex;
+            transition: color 0.2s;
+        }
+        .uploaded-file .remove-file:hover { color: #f85149; }
+        .uploaded-file .remove-file svg { width: 12px; height: 12px; }
+
+        /* Chat messages */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .chat-msg {
+            max-width: 90%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        .chat-msg.user {
+            align-self: flex-end;
+            background: #1f3a5f;
+            color: #c9d1d9;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-msg.ai {
+            align-self: flex-start;
+            background: #21262d;
+            color: #c9d1d9;
+            border-bottom-left-radius: 4px;
+        }
+
+        .chat-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #484f58;
+            font-size: 13px;
+            text-align: center;
+            padding: 20px;
+            line-height: 1.5;
+        }
+
+        .typing-indicator {
+            align-self: flex-start;
+            padding: 10px 14px;
+            background: #21262d;
+            border-radius: 10px;
+            border-bottom-left-radius: 4px;
+            display: flex;
+            gap: 4px;
+        }
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            background: #484f58;
+            border-radius: 50%;
+            animation: typingBounce 1.2s ease-in-out infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.15s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.3s; }
+
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-4px); }
+        }
+
+        /* Chat input */
+        .chat-input-area {
+            padding: 12px 16px;
+            border-top: 1px solid #21262d;
+            flex-shrink: 0;
+        }
+
+        .chat-input-wrap {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: #e1e4e8;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            resize: none;
+            min-height: 40px;
+            max-height: 120px;
+            line-height: 1.4;
+            transition: border-color 0.2s;
+        }
+        .chat-input:focus { outline: none; border-color: #58a6ff; }
+        .chat-input::placeholder { color: #484f58; }
+
+        .send-btn {
+            width: 38px;
+            height: 38px;
+            background: #238636;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+        .send-btn:hover { background: #2ea043; }
+        .send-btn:disabled { background: #21262d; color: #484f58; cursor: default; }
+        .send-btn svg { width: 16px; height: 16px; }
+
+        /* Mobile tabs */
+        .mobile-tabs {
+            display: none;
+            border-bottom: 1px solid #30363d;
+            background: #161b22;
+            flex-shrink: 0;
+        }
+
+        .mobile-tabs-inner {
+            display: flex;
+        }
+
+        .mobile-tab {
+            flex: 1;
+            padding: 12px 0;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 500;
+            color: #8b949e;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s;
+            font-family: inherit;
+        }
+        .mobile-tab:hover { color: #c9d1d9; }
+        .mobile-tab.active {
+            color: #58a6ff;
+            border-bottom-color: #58a6ff;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .mobile-tabs { display: block; }
+
+            .panels {
+                position: relative;
+            }
+
+            .panel-outline, .panel-report, .panel-chat {
+                position: absolute;
+                inset: 0;
+                width: 100% !important;
+                border: none !important;
+                display: none;
+            }
+
+            .panel-outline.mobile-active,
+            .panel-report.mobile-active,
+            .panel-chat.mobile-active {
+                display: flex;
+            }
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+    </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="top-bar">
+    <a href="/" class="back-link">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M9.78 12.78a.75.75 0 01-1.06 0L4.47 8.53a.75.75 0 010-1.06l4.25-4.25a.75.75 0 111.06 1.06L6.06 8l3.72 3.72a.75.75 0 010 1.06z"/></svg>
+        Home
+    </a>
+    <h1>Report Writer</h1>
+</div>
+
+<!-- Mobile tabs (visible < 900px) -->
+<div class="mobile-tabs">
+    <div class="mobile-tabs-inner">
+        <button class="mobile-tab" data-panel="outline">Outline</button>
+        <button class="mobile-tab active" data-panel="report">Report</button>
+        <button class="mobile-tab" data-panel="chat">Chat</button>
+    </div>
+</div>
+
+<!-- Three-panel layout -->
+<div class="panels">
+
+    <!-- Left: Section Outline -->
+    <div class="panel-outline" id="panelOutline">
+        <div class="panel-header">Outline</div>
+        <div class="outline-list" id="outlineList">
+            <div class="outline-empty">No report yet. Start a conversation to generate one.</div>
+        </div>
+    </div>
+
+    <!-- Center: Report Viewer -->
+    <div class="panel-report mobile-active" id="panelReport">
+        <div class="report-toolbar">
+            <input type="text" class="report-title-input" id="reportTitle" placeholder="Untitled Report">
+            <button class="toolbar-btn" id="exportPdf">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <polyline points="9 15 12 18 15 15"/>
+                </svg>
+                PDF
+            </button>
+            <button class="toolbar-btn" id="exportWord">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+                Word
+            </button>
+        </div>
+        <div class="report-content" id="reportContent">
+            <div class="report-empty" id="reportEmpty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <p>Your report will appear here. Upload reference documents and start chatting to generate a report.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: AI Chat -->
+    <div class="panel-chat" id="panelChat">
+        <!-- Upload area -->
+        <div class="upload-zone">
+            <div class="upload-dropzone" id="uploadDropzone">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p>Drop files here or <span>browse</span></p>
+            </div>
+            <input type="file" class="upload-input" id="uploadInput" multiple accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg,.xlsx,.csv">
+            <div class="uploaded-files" id="uploadedFiles"></div>
+        </div>
+
+        <!-- Chat messages -->
+        <div class="chat-messages" id="chatMessages">
+            <div class="chat-empty">Upload reference documents and describe the report you want to create.</div>
+        </div>
+
+        <!-- Chat input -->
+        <div class="chat-input-area">
+            <div class="chat-input-wrap">
+                <textarea class="chat-input" id="chatInput" placeholder="Ask for improvements, add a section, or refine the report..." rows="1"></textarea>
+                <button class="send-btn" id="sendBtn" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"/>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+(function() {
+    // State
+    let uploadedFiles = [];
+    let reportData = null; // { title, sections }
+    let reportId = null;
+    let isLoading = false;
+
+    // Elements
+    const outlineList = document.getElementById('outlineList');
+    const reportContent = document.getElementById('reportContent');
+    const reportEmpty = document.getElementById('reportEmpty');
+    const reportTitle = document.getElementById('reportTitle');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const uploadDropzone = document.getElementById('uploadDropzone');
+    const uploadInput = document.getElementById('uploadInput');
+    const uploadedFilesEl = document.getElementById('uploadedFiles');
+
+    // Mobile tabs
+    const mobileTabs = document.querySelectorAll('.mobile-tab');
+    const panels = {
+        outline: document.getElementById('panelOutline'),
+        report: document.getElementById('panelReport'),
+        chat: document.getElementById('panelChat'),
+    };
+
+    mobileTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            mobileTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            Object.values(panels).forEach(p => p.classList.remove('mobile-active'));
+            panels[tab.dataset.panel].classList.add('mobile-active');
+        });
+    });
+
+    // --- File Upload ---
+    uploadDropzone.addEventListener('click', () => uploadInput.click());
+
+    uploadDropzone.addEventListener('dragover', e => {
+        e.preventDefault();
+        uploadDropzone.classList.add('dragover');
+    });
+    uploadDropzone.addEventListener('dragleave', () => {
+        uploadDropzone.classList.remove('dragover');
+    });
+    uploadDropzone.addEventListener('drop', e => {
+        e.preventDefault();
+        uploadDropzone.classList.remove('dragover');
+        handleFiles(e.dataTransfer.files);
+    });
+
+    uploadInput.addEventListener('change', () => {
+        handleFiles(uploadInput.files);
+        uploadInput.value = '';
+    });
+
+    function handleFiles(fileList) {
+        for (const file of fileList) {
+            uploadFile(file);
+        }
+    }
+
+    async function uploadFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const entry = { originalName: file.name, storedName: null, uploading: true };
+        uploadedFiles.push(entry);
+        renderUploadedFiles();
+
+        try {
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            entry.storedName = data.filename;
+            entry.uploading = false;
+        } catch (err) {
+            entry.error = true;
+            entry.uploading = false;
+            console.error('Upload failed:', err);
+        }
+        renderUploadedFiles();
+    }
+
+    function renderUploadedFiles() {
+        uploadedFilesEl.innerHTML = uploadedFiles.map((f, i) => `
+            <div class="uploaded-file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <span class="file-name">${escapeHtml(f.originalName)}${f.uploading ? ' (uploading...)' : ''}${f.error ? ' (failed)' : ''}</span>
+                <button class="remove-file" data-index="${i}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+        `).join('');
+
+        uploadedFilesEl.querySelectorAll('.remove-file').forEach(btn => {
+            btn.addEventListener('click', () => {
+                uploadedFiles.splice(parseInt(btn.dataset.index), 1);
+                renderUploadedFiles();
+            });
+        });
+    }
+
+    // --- Chat ---
+    chatInput.addEventListener('input', () => {
+        sendBtn.disabled = !chatInput.value.trim() || isLoading;
+        // Auto-resize
+        chatInput.style.height = 'auto';
+        chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+    });
+
+    chatInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (chatInput.value.trim() && !isLoading) sendMessage();
+        }
+    });
+
+    sendBtn.addEventListener('click', () => {
+        if (chatInput.value.trim() && !isLoading) sendMessage();
+    });
+
+    async function sendMessage() {
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        // Clear empty state
+        const emptyEl = chatMessages.querySelector('.chat-empty');
+        if (emptyEl) emptyEl.remove();
+
+        // Add user message
+        appendMessage('user', message);
+
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+        sendBtn.disabled = true;
+        isLoading = true;
+
+        // Show typing indicator
+        const typingEl = document.createElement('div');
+        typingEl.className = 'typing-indicator';
+        typingEl.innerHTML = '<span></span><span></span><span></span>';
+        chatMessages.appendChild(typingEl);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        try {
+            const fileNames = uploadedFiles
+                .filter(f => f.storedName)
+                .map(f => f.storedName);
+
+            const res = await fetch('/report/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message,
+                    uploaded_files: fileNames,
+                    report_id: reportId
+                })
+            });
+            const data = await res.json();
+
+            typingEl.remove();
+
+            // AI reply
+            if (data.reply) {
+                appendMessage('ai', data.reply);
+            }
+
+            // Update report if present
+            if (data.report) {
+                reportData = data.report;
+                if (data.report.title) reportTitle.value = data.report.title;
+                renderReport();
+                renderOutline();
+            }
+
+            if (data.report_id) {
+                reportId = data.report_id;
+            }
+        } catch (err) {
+            typingEl.remove();
+            appendMessage('ai', 'Failed to reach the server. Please try again.');
+            console.error('Chat error:', err);
+        }
+
+        isLoading = false;
+        sendBtn.disabled = !chatInput.value.trim();
+    }
+
+    function appendMessage(role, text) {
+        const div = document.createElement('div');
+        div.className = 'chat-msg ' + role;
+        div.textContent = text;
+        chatMessages.appendChild(div);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // --- Report Rendering ---
+    function renderReport() {
+        if (!reportData || !reportData.sections || reportData.sections.length === 0) {
+            reportContent.innerHTML = '';
+            reportContent.appendChild(reportEmpty);
+            return;
+        }
+
+        reportContent.innerHTML = reportData.sections.map(s => {
+            const tag = 'h' + Math.min(s.level, 3);
+            return `<section id="${s.id}">
+                <${tag}>${escapeHtml(s.heading)}</${tag}>
+                ${s.content}
+            </section>`;
+        }).join('');
+
+        setupIntersectionObserver();
+    }
+
+    // --- Outline ---
+    function renderOutline() {
+        if (!reportData || !reportData.sections || reportData.sections.length === 0) {
+            outlineList.innerHTML = '<div class="outline-empty">No report yet. Start a conversation to generate one.</div>';
+            return;
+        }
+
+        outlineList.innerHTML = reportData.sections.map(s => {
+            return `<a class="outline-item level-${s.level}" data-section="${s.id}">${escapeHtml(s.heading)}</a>`;
+        }).join('');
+
+        outlineList.querySelectorAll('.outline-item').forEach(item => {
+            item.addEventListener('click', e => {
+                e.preventDefault();
+                const section = document.getElementById(item.dataset.section);
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    }
+
+    // --- Intersection Observer for active outline item ---
+    let observer = null;
+
+    function setupIntersectionObserver() {
+        if (observer) observer.disconnect();
+
+        const sections = reportContent.querySelectorAll('section');
+        if (sections.length === 0) return;
+
+        observer = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.id;
+                    outlineList.querySelectorAll('.outline-item').forEach(item => {
+                        item.classList.toggle('active', item.dataset.section === id);
+                    });
+                }
+            });
+        }, {
+            root: reportContent,
+            rootMargin: '0px 0px -70% 0px',
+            threshold: 0
+        });
+
+        sections.forEach(s => observer.observe(s));
+    }
+
+    // --- Export ---
+    document.getElementById('exportPdf').addEventListener('click', () => {
+        if (!reportData || !reportData.sections || reportData.sections.length === 0) return;
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const title = reportTitle.value || 'Untitled Report';
+        const margin = 20;
+        const pageWidth = doc.internal.pageSize.getWidth() - margin * 2;
+        let y = margin;
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text(title, margin, y);
+        y += 12;
+
+        reportData.sections.forEach(s => {
+            const fontSize = s.level === 1 ? 14 : s.level === 2 ? 12 : 11;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(fontSize);
+
+            if (y > 270) { doc.addPage(); y = margin; }
+            y += 8;
+            doc.text(s.heading, margin, y);
+            y += fontSize * 0.5 + 2;
+
+            // Strip HTML for plain text
+            const tmp = document.createElement('div');
+            tmp.innerHTML = s.content;
+            const plainText = tmp.textContent || tmp.innerText || '';
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            const lines = doc.splitTextToSize(plainText.trim(), pageWidth);
+            lines.forEach(line => {
+                if (y > 280) { doc.addPage(); y = margin; }
+                doc.text(line, margin, y);
+                y += 5;
+            });
+        });
+
+        doc.save(title.replace(/[^a-z0-9]/gi, '_') + '.pdf');
+    });
+
+    document.getElementById('exportWord').addEventListener('click', () => {
+        if (!reportData || !reportData.sections || reportData.sections.length === 0) return;
+
+        const title = reportTitle.value || 'Untitled Report';
+        let html = `<html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body>`;
+        html += `<h1>${escapeHtml(title)}</h1>`;
+
+        reportData.sections.forEach(s => {
+            const tag = 'h' + Math.min(s.level, 3);
+            html += `<${tag}>${escapeHtml(s.heading)}</${tag}>`;
+            html += s.content;
+        });
+
+        html += '</body></html>';
+
+        const blob = new Blob([html], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = title.replace(/[^a-z0-9]/gi, '_') + '.doc';
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    // --- Helpers ---
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+})();
+</script>
+
+</body>
+</html>
