@@ -192,7 +192,6 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
     logger.info(f"Global Error Handler: {exc.status_code=}, {exc.detail=} ")
 
-
     if exc.status_code == 401: 
         return RedirectResponse(url="/login")
 
@@ -207,9 +206,6 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
-
-
-
 async def get_user_and_validate_session(request: Request):
     
     user = request.session.get("user")
@@ -222,8 +218,6 @@ async def get_user_and_validate_session(request: Request):
         )
 
     token = user.get("access_token")
-    
-    logger.info(f"{token=}")
     
     id_token = user.get("id_token")
 
@@ -254,12 +248,6 @@ async def get_user_and_validate_session(request: Request):
 }
     header = jwt.get_unverified_header(token)
     algo = header.get("alg")
-    logger.info(f"issuer: {ISSUER}") 
-
-    logger.info(f" audience from env: {AUTH0_AUDIENCE}")
-    logger.info(f"audience from token: {header.items()}")
-
-
 
     try: 
 
@@ -284,35 +272,8 @@ async def get_user_and_validate_session(request: Request):
         
 
 
-#I want one more way to access my api, mostly to practice setting up endpoints using various secure methods
 
-def generate_master_key_remote_api_call():
-
-    master_key = Fernet.generate_key()
-
-    from dotenv import set_key
-    set_key(".env", "master_key", master_key)
-
-
-def generate_token_remote_api_call(username:str, expire_delta: int):
-
-    master_key = os.getenv('master_key')
-
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expire_delta)
-
-    payload = {
-        'user': username,
-        'expire': expire.timestamp()
-    }
-    
-
-    payload_bytes = json.dumps(payload).encode('utf-8')
-
-    encrypted_token = Fernet(master_key).encrypt(payload_bytes)
-
-    return encrypted_token
-
-
+#this might be useful still 
 async def get_token_from_cookie(request: Request) -> str:
     """Retrieves the access token from the cookie."""
     access_token = request.cookies.get("access_token")
@@ -323,25 +284,6 @@ async def get_token_from_cookie(request: Request) -> str:
             headers={"WWW-Authenticate": "Bearer"},
         )
     return access_token
-
-
-
-async def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-
-    to_encode = data.copy()
-
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-
-    to_encode.update({"exp": expire})
-
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY_JWT, algorithm=ALGORITHM)
-
-    logger.info(f"Successfully created JWT for user: {data.get('sub')}")
-
-    return encoded_jwt
 
 
 #this needs some work 
@@ -359,6 +301,115 @@ async def get_current_active_user(current_user: User = Depends(get_user_and_vali
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+#General stuff that needs to be available across many endpoints in the API 
+@app.post("/upload")
+async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validate_session) ):
+
+    os.makedirs(UPLOAD_DIR,exist_ok=True)
+
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+
+    logger.info(f"Saving file to path on server: {file_path=}")
+
+    try:
+        size = await HandleFiles.write_file(file=file, file_path=file_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload/save file: {e}")
+
+
+    logger.info(f"File Saved")
+
+
+
+    return {
+        "status_code": 200,
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "size": size,
+    }
+
+
+@app.post("/adnepos/transcribe")
+async def transcribe_image(transcribe_request: TranscribeRequest,  user: User = Depends(get_user_and_validate_session)):
+    MAX_FILES = 20
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+    if not transcribe_request.filenames:
+        raise HTTPException(status_code=400, detail="No filenames provided.")
+
+    for filename in transcribe_request.filenames:
+        if ".." in filename or filename.startswith("/"):
+            raise HTTPException(status_code=400, detail=f"Invalid filename: {filename}")
+
+    if len(transcribe_request.filenames) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Too many files. Maximum {MAX_FILES} allowed.")
+
+
+    
+    images = []
+    for filename in transcribe_request.filenames:
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail=f"File not found: {filename}")
+
+        if os.path.getsize(file_path) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail=f"File too large: {filename}")
+        images.append((file_path, filename))
+    
+    coroutines = []
+    for image_path, image_filename in images:
+        image_bytes = await HandleFiles.read_file(file_path=image_path, mode='rb')
+        transcribe_result = transcriber_instance.process_image(image_bytes, image_filename)
+        coroutines.append(transcribe_result)
+
+    result = await asyncio.gather(*coroutines)
+
+
+    return {"results": result} 
+
+
+@app.post("/ynab/export")
+async def export_ynab(export_request: FileObject, user: User = Depends(get_user_and_validate_session)):
+
+    file_path = os.path.join(UPLOAD_DIR, export_request.filename)
+
+    arrow = await HandleFiles.read_csv(file_path)
+
+    accounts = [SPAREKONTO_18_23_ACCOUNT_NR, CHECKING_ACCOUNT_NR,BSU_ACCOUNT_NR ]
+
+    metadata = {}
+
+    for account in accounts: 
+        
+        transaction_table, metadata = await filter_mobilebanken_transactions(arrow=arrow,from_account=account,to_account=account)
+        transactions = await ynab_instance.create_transactions(transaction_table)
+        api_response = await ynab_instance.import_transactions(transactions)
+        metadata[account] = api_response
+
+
+    return {
+        "status_code": 200, 
+        "metadata" : metadata
+    }
+        
+
+
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_user_and_validate_session)):
+    return current_user
 
 
 
@@ -405,10 +456,6 @@ async def cv():
 def redirect_me():
     return RedirectResponse(url="/cv")
 
-
-
-
-
 @app.get("/login")
 async def login(request: Request):
     redirect_uri = request.url_for("callback")
@@ -419,7 +466,6 @@ async def callback(request: Request):
     token = await oauth.auth0.authorize_access_token(request)
     request.session["user"] = token
     return RedirectResponse(url="/")
-
 
 @app.get("/logout")
 async def logout(request: Request):
@@ -432,137 +478,3 @@ async def test_api(user: User = Depends(get_user_and_validate_session)):
     logger.info(f"Checking User: {user}")
 
     return user
-
-
-
-
-#General stuff that needs to be available across many endpoints in the API 
-@app.post("/upload")
-async def upload_file(file: UploadFile,user: User = Depends(get_user_and_validate_session) ):
-
-    os.makedirs(UPLOAD_DIR,exist_ok=True)
-
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-
-    logger.info(f"Saving file to path on server: {file_path=}")
-
-    try:
-        size = await HandleFiles.write_file(file=file, file_path=file_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload/save file: {e}")
-
-
-    logger.info(f"File Saved")
-
-
-
-    return {
-        "status_code": 200,
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "size": size,
-    }
-
-
-@app.post("/adnepos/transcribe")
-async def transcribe_image(transcribe_request: TranscribeRequest,  user: User = Depends(get_user_and_validate_session)):
-
-    logger.info(f"Checking {transcribe_request=}")
-    try: 
-        images = [os.path.join(UPLOAD_DIR,image_filename) for image_filename in transcribe_request.filenames]
-    except HTTPException as e:
-        raise HTTPException(
-            status_code= 400,
-            detail="Image not found.",
-        )
-
-    
-    try: 
-        image_bytes = await asyncio.gather(*[HandleFiles.read_file(file_path=image_path, mode='rb') for image_path in images])
-    except IOError as e: 
-        logger.info(f"Failed to read file")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed reading file"
-        )
-
-    ## need to add support for multiple images here 
-    logger.info(f"Checking image: {image_bytes[0]}")
-    result = await transcriber_instance.process_image(image_bytes[0])
-
-    logger.info(f"Transcribed text: {result}")
-    logger.info(f"Type of result: {type(result)}")
-    #transactions = images[0]
-    
-    logger.info(f"result dict : {result.dict()}")
-    
-
-    return result.dict()
-
-
-    
-
-
-
-@app.post("/ynab/export")
-async def export_ynab(export_request: FileObject, user: User = Depends(get_user_and_validate_session)):
-    
-    logger.info(f"{export_request=}")
-
-
-    file_path = os.path.join(UPLOAD_DIR, export_request.filename)
-
-
-    logger.info(f"{file_path=}")
-    try:
-        arrow = await HandleFiles.read_csv(file_path)
-    except Exception as e: 
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed reading Mobilbanken CSV file from path: {file_path}, Exception: {e}")
-    ## this needs to be secret 
-    accounts = [SPAREKONTO_18_23_ACCOUNT_NR, CHECKING_ACCOUNT_NR,BSU_ACCOUNT_NR ]
-
-    metadata = {}
-
-    for account in accounts: 
-        
-        transaction_table, metadata = await filter_mobilebanken_transactions(arrow=arrow,from_account=account,to_account=account)
-        logger.info(f"{transaction_table=}")
-        transactions = await ynab_instance.create_transactions(transaction_table)
-        logger.info(f"{transactions=}")
-        api_response = await ynab_instance.import_transactions(transactions)
-        metadata[account] = api_response
-
-
-    return {
-        "status_code": 200, 
-        "metadata" : metadata
-    }
-        
-
-
-        
-    
-
-
-
-
-
-
-
-
-
-@app.get("/users/me")
-async def read_users_me(current_user: User = Depends(get_user_and_validate_session)):
-    return current_user
-
-
-@app.get("/items/{item_id}")
-async def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q}
-
-
-
-
-

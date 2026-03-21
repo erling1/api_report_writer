@@ -4,6 +4,7 @@ import pyarrow as pa
 import duckdb 
 import logging
 import os 
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,8 @@ class HandleFiles:
     async def read_file(file_path:str,mode: str): 
     
         try:
-            with open(file=file_path,mode=mode) as f:
-                file = f.read()
+            async with aiofiles.open(file_path,mode) as f:
+                file = await f.read()
         except FileNotFoundError:
             raise HTTPException(
                 status_code=404,
@@ -37,8 +38,15 @@ class HandleFiles:
         For reading csv files and return a arrow table
         """
         logger.info(f"Reading Mobilbanken CSV file: {os.path.basename(file_path)}")
+        
+        try: 
+            df = pd.read_csv(file_path, delimiter=';',encoding='unicode_escape')
+        except (TypeError, FileNotFoundError, UnicodeDecodeError, MemoryError) as e: 
+            raise  HTTPException(
+                status_code=500,
+                detail=f"Failed reading Mobilbanken CSV file from path: {file_path}, Exception: {e}")
 
-        df = pd.read_csv(file_path, delimiter=';',encoding='unicode_escape')
+
 
         logger.info(f"Converting to arrow table")
 

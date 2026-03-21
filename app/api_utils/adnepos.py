@@ -12,6 +12,7 @@ class Metadata(BaseModel):
     entities: Optional[str] = None
 
 class TranscribeResult(BaseModel):
+    filename: str 
     transcription: str
     metadata: Optional[Metadata] = None
 
@@ -45,15 +46,10 @@ class Transcriber:
 
 
 
-
-
-
-    #only takes in one image, 
-    async def process_image(self, image_bytes: bytes) -> TranscribeResult:
+    async def process_image(self, image_bytes: bytes, image_filename: str) -> TranscribeResult:
 
         result = await self._transcribe(image_bytes)
-
-
+        result.filename = image_filename
        
         return result  #dict with transcrpiton and metadata 
 
