@@ -46,10 +46,33 @@ class OrchestratorAgent:
         ("risikoagent", "prompts/risikoagent.md"),
         ("utviklingsagent", "prompts/utviklingsagent.md"),
     ]
+    _model: str = "claude-sonnet-4-20250514"
+    _max_tokens: int = 4096
+
     def __init__(self, client: anthropic.AsyncAnthropic):
         self._client = client
+        self.system_prompt = Path(self.orchestrator_prompt).read_text()
+
+    async def generate_completion(self, messages) -> dict:
+        response = await self._client.messages.create(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            system=[
+                {
+                    "type": "text",
+                    "text": self.system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=messages,
+            tools=self.available_tools,
+            tool_choice=self.tool_choice,
+        )
+        return response.content[0].input
 
     async def parse_user_draft(self):
+
+
 
 
 
