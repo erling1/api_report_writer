@@ -43,10 +43,17 @@ from api_utils.ynab import filter_mobilebanken_transactions, YNABAPI
 from api_utils.adnepos import Transcriber
 
 
+#Report Writing
+from api_utils.agent import OrchestratorAgent, Agent
+
+
 #Gemini 
 from google import genai
 from google.genai import types
 
+
+#Anthropic
+import anthropic 
 
 #general 
 import os
@@ -170,12 +177,14 @@ class TranscribeRequest(BaseModel):
 ####CLIENTS 
 
 gemini_client = genai.Client() #Needs gemini api key in the env 
+anthropic_client = anthropic.AsyncAnthropic()
 
 
 
 ###### Need a place to initalise all classes i need 
 ynab_instance = YNABAPI(YNAB_PAC=YNAB_TOKEN)
 transcriber_instance = Transcriber(client=gemini_client)
+orchestratoragent = OrchestratorAgent(client=anthropic_client)
 #####
 
 
@@ -404,6 +413,40 @@ async def export_ynab(export_request: FileObject, user: User = Depends(get_user_
         "status_code": 200, 
         "metadata" : metadata
     }
+
+
+@app.post("/report")
+async def generate_report(user: User = Depends(get_user_and_validate_session)):
+
+    #create agents:
+
+    agents = await orchestratoragent.create_agents()
+
+    
+
+
+
+
+
+    return {"report_id": report_id,
+            "report": report}
+
+
+@app.post("report/{report_id}/section/{feedback}")
+async def generate_new_section(user: User = Depends(get_user_and_validate_session))
+
+
+
+
+
+
+
+
+
+
+
+
+
         
 
 

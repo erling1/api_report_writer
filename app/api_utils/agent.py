@@ -5,6 +5,7 @@ from pathlib import Path
 import anthropic
 from pydantic import BaseModel
 from api_utils.logger import logger
+from tools import delegering_plan
 ####### All relevant Agents:
 # Summary Agent
 # Assessment Agent
@@ -30,36 +31,41 @@ class CompletionResult(BaseModel):
 
 
 class OrchestratorAgent:
-    _client: anthropic.AsyncAnthropic
+    orchestrator_prompt: str = "prompts/orchestrator.md"
+    available_tools: list = [delegering_plan]
+    tool_choice: dict = {"type": "tool", "name": "delegering_plan"}
     agents: list = [
-        "sammendragsagent",
-        "kartleggingsagent",
-        "tiltaksevalueringsagent",
-        "familie_og_nettverksagent",
-        "barnets_perspektiv_agent",
-        "synteseagent",
-        "anbefalingsagent",
-        "hendelsesagent",
-        "risikoagent",
-        "utviklingsagent"
+        ("sammendragsagent", "prompts/sammendragsagent.md"),
+        ("kartleggingsagent", "prompts/kartleggingsagent.md"),
+        ("tiltaksevalueringsagent", "prompts/tiltaksevalueringsagent.md"),
+        ("familie_og_nettverksagent", "prompts/familie_og_nettverksagent.md"),
+        ("barnets_perspektiv_agent", "prompts/barnets_perspektiv_agent.md"),
+        ("synteseagent", "prompts/synteseagent.md"),
+        ("anbefalingsagent", "prompts/anbefalingsagent.md"),
+        ("hendelsesagent", "prompts/hendelsesagent.md"),
+        ("risikoagent", "prompts/risikoagent.md"),
+        ("utviklingsagent", "prompts/utviklingsagent.md"),
     ]
-    async def _create_client(self) -> anthropic.AsyncAnthropic:
-        if not self._client:
-            logger.info(f"Creating Anthropic API Client")
-            self._client = anthropic.AsyncAnthropic()
+    def __init__(self, client: anthropic.AsyncAnthropic):
+        self._client = client
 
-        return self._client
+    async def parse_user_draft(self):
+
+
 
     async def validate_output():
         return None
 
     async def create_agent(self, name: str, prompt_path: str) -> Agent:
         logger.info(f"Creating Agent: {name}")
-        self._client = self._create_client()
         self.system_prompt = Path(prompt_path).read_text()self.system_prompt = Path(prompt_path).read_text()
         agent = Agent(name=name, system_prompt=system_prompt, _client=client)
         logger.info(f"Agents Created for API Report Writer")
         return agent
+
+    async def create_agents(self) -> dict[str, Agent]:
+        return {name: await self.create_agent(name, path) for name, path in self.agents}
+    
 
 
 class Agent:
