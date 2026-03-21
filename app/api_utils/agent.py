@@ -33,7 +33,6 @@ class CompletionResult(BaseModel):
 class OrchestratorAgent:
     orchestrator_prompt: str = "prompts/orchestrator.md"
     available_tools: list = [delegering_plan]
-    tool_choice: dict = {"type": "tool", "name": "delegering_plan"}
     agents: list = [
         ("sammendragsagent", "prompts/sammendragsagent.md"),
         ("kartleggingsagent", "prompts/kartleggingsagent.md"),
@@ -53,8 +52,8 @@ class OrchestratorAgent:
         self._client = client
         self.system_prompt = Path(self.orchestrator_prompt).read_text()
 
-    async def generate_completion(self, messages) -> dict:
-        response = await self._client.messages.create(
+    async def generate_completion(self, messages, tool: str = None):
+        kwargs = dict(
             model=self._model,
             max_tokens=self._max_tokens,
             system=[
@@ -65,14 +64,34 @@ class OrchestratorAgent:
                 }
             ],
             messages=messages,
-            tools=self.available_tools,
-            tool_choice=self.tool_choice,
         )
-        return response.content[0].input
+        if tool:
+            kwargs["tools"] = self.available_tools
+            kwargs["tool_choice"] = {"type": "tool", "name": tool}
 
-    async def parse_user_draft(self):
+        response = await self._client.messages.create(**kwargs)
 
+        if tool:
+            return response.content[0].input
 
+        return CompletionResult(
+            content=response.content[0].text,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            cache_read_tokens=response.usage.cache_read_input_tokens or 0,
+            stop_reason=response.stop_reason,
+        )
+
+    async def create_agent_plan(self, draft: str): #usnure if i should send in string or file here
+        """" 
+
+        Delegates relevant parts of a draft to each agent 
+
+        """
+        messages = [{"role": "user", "content": draft}]
+        plan = self.generate_completion(messages=messages, tool=delegering_plan)
+
+        return plan
 
 
 
