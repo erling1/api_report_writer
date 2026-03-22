@@ -178,8 +178,10 @@ class Agent:
             stop_reason=response.stop_reason,
         )
 
-    async def generate_section(self) -> CompletionResult:
-        return await self.generate_completion(input=self.message)
+    async def generate_section(self, input_from_other_agent=None) -> CompletionResult:
+        return await self.generate_completion(
+            input=f"{self.message}\n{input_from_other_agent if input_from_other_agent else ''}"
+        )
 
     async def feedback(self, input: str) -> CompletionResult:
         return await self.generate_completion(input=self.message)
