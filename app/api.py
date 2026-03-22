@@ -466,15 +466,146 @@ async def generate_report(draft: FileObject,user: User = Depends(get_user_and_va
 
     agents = await orchestratoragent.create_agents(plan=plan)
 
+    # Some agents might not be used 
+    section_order = [
+        "sammendragsagent",
+        "kartleggingsagent",
+        "tiltaksevalueringsagent",
+        "familie_og_nettverksagent",
+        "barnets_perspektiv_agent",
+        "synteseagent",
+        "anbefalingsagent",
+        "hendelsesagent",
+        "risikoagent",
+        "utviklingsagent",
+    ]
+
+
+    base = {
+        "sammendragsagent": [],
+        "kartleggingsagent": [],
+        "hendelsesagent": [],
+        "utviklingsagent": [],
+    }
+
+
+    context = {
+        "familie_og_nettverksagent": [
+            "kartleggingsagent"
+        ],
+        "barnets_perspektiv_agent": [
+            "sammendragsagent",
+            "hendelsesagent"
+        ],
+    }
+
+
+    analysis = {
+        "risikoagent": [
+            "hendelsesagent",
+            "kartleggingsagent",
+            "utviklingsagent"
+        ],
+        "tiltaksevalueringsagent": [
+            "kartleggingsagent",
+            "utviklingsagent",
+            "hendelsesagent"
+        ],
+    }
+
+
+    synthesis = {
+        "synteseagent": [
+            "sammendragsagent",
+            "kartleggingsagent",
+            "familie_og_nettverksagent",
+            "barnets_perspektiv_agent",
+            "tiltaksevalueringsagent",
+            "risikoagent"
+        ]
+    }
+
+
+    decision = {
+        "anbefalingsagent": [
+            "synteseagent",
+            "risikoagent"
+        ]
+    }
+
+    agent_dependencies = {
+        **context,
+        **analysis,
+        **synthesis,
+        **decision,
+    }
+
+
+
+    base_agent_tasks = {
+    agent_name: agents[agent_name].generate_section()
+    for agent_name in base.keys()
+}
+
+    base_results = dict(
+        zip(base_agent_tasks.keys(), await asyncio.gather(*base_agent_tasks.values()))
+    )
+
+    context_and_analysis_agents_tasks = {}
+    for group in [context, analysis]:
+        for agent_name, deps in group.items():
+            deps_result = [base_results[dep].content for dep in deps]
+            input_ = "\n".join(deps_result)
+            context_and_analysis_agents_tasks[agent_name] = agents[agent_name].generate_section(input=input_)
+
+    context_and_analysis_results = dict(
+        zip(
+            context_and_analysis_agents_tasks.keys(),
+            await asyncio.gather(*context_and_analysis_agents_tasks.values()),
+        )
+    )
+
+    synthesis_agent_task = {}
+    current_results = base_results | context_and_analysis_results
+    agent_name, deps =  synthesis.items()
+    deps_result = [current_results[dep].content for dep in deps]
+    input_ = "\n".join(deps_result)
+
+    synthesis_agent_results = {
+        agent_name : await agents[agent_name].generate_section(input=input_)
+        }
+
+    current_results = current_results | synthesis_agent_results
+    agent_name, deps = decision.items()
+    deps_result = [current_results[dep].content for dep in deps]
+    input_ = "\n".join(deps_result)
+
+    decision_agent_results = {
+        agent_name : await agents[agent_name].generate_section(input=input_)
+    }
+
+
+    complete_results = current_results | decision_agent_results
+
+
+
+        sections.append({
+            "id": f"section-{i}",
+            "level": 1,
+            "heading": plan_lookup.get(agent_name, {}).get("agent", agent_name),
+            "content": result.content,
+        })
+
+    report_id = str(uuid.uuid4())
+    report = {"title": "Evalueringsrapport", "sections": sections}
+    return {"report_id": report_id, "report": report}
+
 
     
 
 
 
 
-
-    return {"report_id": report_id,
-            "report": report}
 
 @app.post("report/{report_id}/chat")
 
