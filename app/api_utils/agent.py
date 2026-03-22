@@ -82,32 +82,67 @@ class OrchestratorAgent:
             stop_reason=response.stop_reason,
         )
 
-    async def create_agent_plan(self, draft: str): #usnure if i should send in string or file here
-        """" 
+    async def create_agent_plan(
+        self, draft: str
+    ):  # usnure if i should send in string or file here
+        """ "
 
-        Delegates relevant parts of a draft to each agent 
+              Delegates relevant parts of a draft to each agent returns
+
+              {
+            "delegering": [
+                {
+                    "agent": "kartleggingsagent",
+                    "input_tekst": ["Relevant text from the draft..."],
+                    "run_last": False,
+                    "depends_on": [],
+                    "merknad": ""
+                },
+                {
+                    "agent": "barnets_perspektiv_agent",
+                    "input_tekst": [],
+                    "run_last": False,
+                    "depends_on": [],
+                    "merknad": "Ingen informasjon om barnets perspektiv funnet i utkastet."
+                },
+                # ... one entry per agent
+            ],
+            "usikker": [
+                "Avsnittet om samarbeid med skolen kan tilhøre flere agenter."
+            ]
+        }
 
         """
         messages = [{"role": "user", "content": draft}]
-        plan = self.generate_completion(messages=messages, tool=delegering_plan)
+        plan = await self.generate_completion(messages=messages, tool=delegering_plan)
 
         return plan
-
-
 
     async def validate_output():
         return None
 
-    async def create_agent(self, name: str, prompt_path: str) -> Agent:
-        logger.info(f"Creating Agent: {name}")
-        self.system_prompt = Path(prompt_path).read_text()self.system_prompt = Path(prompt_path).read_text()
-        agent = Agent(name=name, system_prompt=system_prompt, _client=client)
+    async def create_agent(self, agent: str, input_tekst: str) -> Agent:
+        logger.info(f"Creating Agent: {agent}")
+        prompt_path = f"prompts/{agent}.md"
+        self.system_prompt = Path(prompt_path).read_text()
+        agent = Agent(
+            name=name,
+            system_prompt=system_prompt,
+            message=input_tekst,
+            _client=self.client,
+        )
         logger.info(f"Agents Created for API Report Writer")
         return agent
 
-    async def create_agents(self) -> dict[str, Agent]:
-        return {name: await self.create_agent(name, path) for name, path in self.agents}
-    
+    async def create_agents(self, plan: dict) -> dict[str, Agent]:
+        agents = {}
+        for task in plan:
+            agent = await self.create_agent(
+                **task,
+            )
+            agents[agent["name"]] = agent
+
+        return agents
 
 
 class Agent:
@@ -119,7 +154,7 @@ class Agent:
     _model: str
     _max_tokens: int = 1024
 
-    async def generate_completion(self, messages=None) -> CompletionResult:
+    async def generate_completion(self, input=None) -> CompletionResult:
         response = await self._client.messages.create(
             model=self._model,
             max_tokens=self._max_tokens,
@@ -130,7 +165,7 @@ class Agent:
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
-            messages=messages,
+            messages=[{"role": "user", "content": input}],
         )
 
         return CompletionResult(
@@ -142,8 +177,7 @@ class Agent:
         )
 
     async def generate_section(self) -> CompletionResult:
-        return await self.generate_completion()
+        return await self.generate_completion(input=self.message)
 
     async def feedback(self, input: str) -> CompletionResult:
-        messages = [{"role": "user", "content": input}]
-        return await self.generate_completion(messages=messages)
+        return await self.generate_completion(input=self.message)
