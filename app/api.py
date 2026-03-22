@@ -533,14 +533,6 @@ async def generate_report(draft: FileObject,user: User = Depends(get_user_and_va
         ]
     }
 
-    agent_dependencies = {
-        **context,
-        **analysis,
-        **synthesis,
-        **decision,
-    }
-
-
 
     base_agent_tasks = {
     agent_name: agents[agent_name].generate_section()
@@ -587,14 +579,6 @@ async def generate_report(draft: FileObject,user: User = Depends(get_user_and_va
 
     complete_results = current_results | decision_agent_results
 
-
-
-        sections.append({
-            "id": f"section-{i}",
-            "level": 1,
-            "heading": plan_lookup.get(agent_name, {}).get("agent", agent_name),
-            "content": result.content,
-        })
 
     report_id = str(uuid.uuid4())
     report = {"title": "Evalueringsrapport", "sections": sections}
