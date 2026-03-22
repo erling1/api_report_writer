@@ -579,10 +579,38 @@ async def generate_report(draft: FileObject,user: User = Depends(get_user_and_va
 
     complete_results = current_results | decision_agent_results
 
+    section_order = [
+        ("sammendragsagent", "Kort oppsummering siste periode"),
+        ("kartleggingsagent", "Kartlegginger gjennomført i siste periode"),
+        ("tiltaksevalueringsagent", "Evaluering av tiltaksplan"),
+        ("familie_og_nettverksagent", "Familie- og nettverksinvolvering"),
+        ("barnets_perspektiv_agent", "Barnets tilbakemelding"),
+        ("hendelsesagent", "Hendelser"),
+        ("risikoagent", "Risikovurdering"),
+        ("utviklingsagent", "Utvikling"),
+        ("synteseagent", "Sammenstilling av informasjon"),
+        ("anbefalingsagent", "Vurdering og anbefaling av videre tiltak"),
+    ]
+
+    sections = []
+    for i, (agent_name, heading) in enumerate(section_order):
+        if agent_name not in complete_results:
+            continue
+        sections.append({
+            "id": f"section-{i}",
+            "level": 1,
+            "heading": heading,
+            "content": complete_results[agent_name].content,
+        })
 
     report_id = str(uuid.uuid4())
-    report = {"title": "Evalueringsrapport", "sections": sections}
-    return {"report_id": report_id, "report": report}
+    return {
+        "report_id": report_id,
+        "report": {
+            "title": "Evalueringsrapport",
+            "sections": sections,
+        },
+    }
 
 
     
