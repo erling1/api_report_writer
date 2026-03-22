@@ -415,12 +415,23 @@ async def export_ynab(export_request: FileObject, user: User = Depends(get_user_
     }
 
 
-@app.post("/report")
-async def generate_report(user: User = Depends(get_user_and_validate_session)):
 
+
+@app.post("/report")
+async def generate_report(draft: FileObject,user: User = Depends(get_user_and_validate_session)):
+
+
+    file_path = os.path.join(UPLOAD_DIR, draft.filename)
+
+    draft_text = await HandleFiles.read_file(file_path=file_path,'r')
+    
     #create agents:
 
-    agents = await orchestratoragent.create_agents()
+    plan = await orchestratoragent.create_agent_plan(draft=draft_text)
+
+    
+
+    agents = await orchestratoragent.create_agents(plan=plan)
 
     
 
@@ -431,6 +442,7 @@ async def generate_report(user: User = Depends(get_user_and_validate_session)):
     return {"report_id": report_id,
             "report": report}
 
+@app.post("report/{report_id}/chat")
 
 @app.post("report/{report_id}/section/{feedback}")
 async def generate_new_section(user: User = Depends(get_user_and_validate_session))
