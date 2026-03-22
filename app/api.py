@@ -8,7 +8,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
 from typing import Union
-import asyncio 
+import asyncio
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from api_utils.logger import logger 
@@ -419,19 +420,52 @@ async def export_ynab(export_request: FileObject, user: User = Depends(get_user_
 
 @app.post("/report")
 async def generate_report(draft: FileObject,user: User = Depends(get_user_and_validate_session)):
+    """
+    Order of agents 
 
+    1. KORT OPPSUMMERING SISTE PERIODE
+       - Agent: sammendragsagent.md
+       - Purpose: Summarizes key developments and highlights from the period.
+
+    2. KARTLEGGINGER SOM HAR VÆRT GJENNOMFØRT I DEN SISTE PERIODEN
+       - Agent: kartleggingsagent.md
+       - Purpose: Describes assessments, tools, and findings (e.g., HoNOSCA, genogram).
+
+    3. EVALUERING AV TILTAKSPLAN
+       - Agent: tiltaksevalueringsagent.md
+       - Purpose: Evaluates goals, interventions, and level of goal achievement.
+
+    4. FAMILIE- OG NETTVERKSINVOLVERING
+       - Agent: familie_og_nettverksagent.md
+       - Purpose: Documents involvement of family and social network.
+
+    5. BARNETS TILBAKEMELDING
+       - Agent: barnets_perspektiv_agent.md
+       - Purpose: Captures the child’s voice, opinions, and expressed wishes.
+
+    6. SAMMENSTILLING AV INFORMASJON
+       - Agent: synteseagent.md
+       - Purpose: Synthesizes all collected information into a coherent overview.
+
+    7. VURDERING OG ANBEFALING AV VIDERE TILTAK
+       - Agent: anbefalingsagent.md
+       - Purpose: Provides professional assessment and recommendations.
+
+    Supporting / optional agents (used across sections when needed):
+       - risikoagent.md: Risk assessments and safety considerations
+       - hendelsesagent.md: Incident/event descriptions
+       - utviklingsagent.md: Tracks development over time
+       - orchestrator.md: Coordinates agent workflow and execution order
+    """
 
     file_path = os.path.join(UPLOAD_DIR, draft.filename)
 
-    draft_text = await HandleFiles.read_file(file_path=file_path,'r')
+    draft_text = await HandleFiles.read_file(file_path=file_path,mode='r')
     
-    #create agents:
-
     plan = await orchestratoragent.create_agent_plan(draft=draft_text)
 
-    
-
     agents = await orchestratoragent.create_agents(plan=plan)
+
 
     
 

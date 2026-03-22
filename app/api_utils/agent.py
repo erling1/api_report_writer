@@ -141,6 +141,8 @@ class OrchestratorAgent:
                 **task,
             )
             agents[agent["name"]] = agent
+            agents["run_last"] = task["run_last"]
+            agents["depends_on"] = task["depends_on"]
 
         return agents
 
